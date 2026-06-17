@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Demand Projection Tool</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="app-surface">
+        <header class="topbar">
+          <div>
+            <h1>Demand Projection Tool</h1>
+          </div>
+        </header>
+
+        <form id="profile-form" class="tool-grid">
+          <section class="glass-panel intake-panel" aria-labelledby="files-heading">
+            <div class="section-head">
+              <div>
+                <p class="section-kicker">Inputs</p>
+                <h2 id="files-heading">Files</h2>
+              </div>
+              <span class="tiny-note">CSV only</span>
+            </div>
+            <div class="file-stack">
+              <label class="file-tile" data-file-tile>
+                <input required type="file" name="base_profile" accept=".csv,text/csv" />
+                <span class="file-mark">B</span>
+                <span>
+                  <strong>Base profile</strong>
+                  <em data-file-name>Choose CSV</em>
+                </span>
+              </label>
+              <label class="file-tile" data-file-tile>
+                <input required type="file" name="peak_projection" accept=".csv,text/csv" />
+                <span class="file-mark">P</span>
+                <span>
+                  <strong>Peak projection (MW)</strong>
+                  <em data-file-name>Choose CSV</em>
+                </span>
+              </label>
+              <label class="file-tile" data-file-tile>
+                <input required type="file" name="energy_projection" accept=".csv,text/csv" />
+                <span class="file-mark">E</span>
+                <span>
+                  <strong>Energy projection (GWh)</strong>
+                  <em data-file-name>Choose CSV</em>
+                </span>
+              </label>
+            </div>
+          </section>
+
+          <section class="glass-panel config-panel" aria-labelledby="config-heading">
+            <div class="section-head">
+              <div>
+                <p class="section-kicker">Projection</p>
+                <h2 id="config-heading">Dates and Output</h2>
+              </div>
+            </div>
+            <div class="form-grid">
+              <label class="field">
+                <span>Base start date</span>
+                <input required type="date" name="base_start_date" value="2024-04-01" />
+              </label>
+              <label class="field">
+                <span>Base end date</span>
+                <input required type="date" name="base_end_date" value="2025-03-31" />
+              </label>
+              <label class="field">
+                <span>Projection start year</span>
+                <input required type="number" name="projection_start_year" value="2025" min="1900" max="2200" />
+              </label>
+              <label class="field">
+                <span>Projection end year</span>
+                <input required type="number" name="projection_end_year" value="2035" min="1900" max="2200" />
+              </label>
+              <label class="field">
+                <span>Profile name</span>
+                <input type="text" name="profile_name" value="odisha" />
+              </label>
+              <label class="field folder-field">
+                <span>Output folder</span>
+                <input required readonly type="text" id="output-folder" name="output_folder" placeholder="Choose a folder" />
+              </label>
+            </div>
+            <div class="config-actions">
+              <button type="button" class="button secondary" id="choose-folder">Choose Folder</button>
+              <button type="submit" class="button primary" id="generate">
+                <span class="button-shimmer"></span>
+                Generate CSV
+              </button>
+            </div>
+          </section>
+
+          <aside class="glass-panel checks-panel" aria-labelledby="checks-heading">
+            <div class="section-head compact">
+              <div>
+                <p class="section-kicker">Run</p>
+                <h2 id="checks-heading">Checks</h2>
+              </div>
+            </div>
+            <div class="metric-grid">
+              <div class="metric">
+                <span>Rows</span>
+                <strong id="metric-rows">-</strong>
+              </div>
+              <div class="metric">
+                <span>Years</span>
+                <strong id="metric-years">-</strong>
+              </div>
+              <div class="metric">
+                <span>Periods/day</span>
+                <strong id="metric-periods">-</strong>
+              </div>
+              <div class="metric">
+                <span>Output</span>
+                <strong id="metric-output">Waiting</strong>
+              </div>
+            </div>
+            <div id="status" class="status">Ready</div>
+          </aside>
+        </form>
+
+        <section class="chart-shell glass-panel" id="chart-shell" hidden>
+          <div class="chart-head">
+            <div>
+              <p class="section-kicker">Shape comparison</p>
+              <h2>Normalized Profile View</h2>
+            </div>
+            <div class="chart-actions">
+              <button type="button" class="button ghost" id="reset-chart">Reset</button>
+              <button type="button" class="button ghost" id="expand-chart">Fullscreen</button>
+            </div>
+          </div>
+          <div class="legend-row" id="legend-row"></div>
+          <div class="chart-frame">
+            <canvas id="profile-chart" aria-label="Normalized demand profile comparison"></canvas>
+            <div class="chart-tooltip" id="chart-tooltip" hidden></div>
+          </div>
+          <div class="chart-hint">Wheel to zoom, drag to pan, double-click to reset.</div>
+        </section>
+
+        <section class="result-panel glass-panel" id="result-panel" hidden>
+          <div class="result-head">
+            <div>
+              <p class="section-kicker">Output</p>
+              <h2>Run Summary</h2>
+              <p id="output-path"></p>
+            </div>
+            <button type="button" class="button secondary" id="copy-path">Copy Path</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Financial Year</th>
+                  <th>Rows</th>
+                  <th>Peak MW</th>
+                  <th>Energy GWh</th>
+                  <th>Peak YoY %</th>
+                  <th>Energy YoY %</th>
+                </tr>
+              </thead>
+              <tbody id="summary-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

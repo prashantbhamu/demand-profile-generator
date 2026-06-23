@@ -1,174 +1,270 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Demand Projection Tool</title>
-    <link rel="stylesheet" href="/style.css" />
-  </head>
-  <body>
-    <main class="shell">
-      <section class="app-surface">
-        <header class="topbar">
-          <div>
-            <h1>Demand Projection Tool</h1>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Demand Projection Tool</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app-bg">
+
+  <!-- Background orbs -->
+  <div class="orb" style="top:-130px;left:-90px;width:480px;height:480px;background:radial-gradient(circle,rgba(59,110,246,0.30),transparent 70%);--dur:18s;"></div>
+  <div class="orb" style="top:120px;right:-130px;width:540px;height:540px;background:radial-gradient(circle,rgba(18,179,160,0.26),transparent 70%);--dur:23s;--dir:reverse;"></div>
+  <div class="orb" style="bottom:-170px;left:32%;width:460px;height:460px;background:radial-gradient(circle,rgba(124,92,246,0.16),transparent 70%);--dur:27s;"></div>
+
+  <div class="shell">
+
+    <!-- Header -->
+    <header style="display:flex;justify-content:space-between;align-items:center;gap:24px;flex-wrap:wrap;margin-bottom:26px;">
+      <div>
+        <h1 style="font-size:34px;line-height:1.04;font-weight:800;letter-spacing:-0.03em;">Demand Projection Tool</h1>
+        <p style="margin:9px 0 0;color:#5a6a86;font-size:15px;max-width:520px;line-height:1.5;">Create future demand profiles from a base profile and yearly peak demand and energy requirement targets.</p>
+      </div>
+      <div class="status-pill" id="status-pill">
+        <span class="pill-dot" id="pill-dot"></span>
+        <span id="pill-label">Ready</span>
+      </div>
+    </header>
+
+    <!-- Main glass card -->
+    <div class="glass-card">
+
+      <!-- Stepper (hidden when results are showing) -->
+      <div class="card-grid" id="form-section">
+
+        <!-- Rail -->
+        <div class="step-rail">
+          <div class="step-item" onclick="goToStep(1)">
+            <div class="step-col">
+              <div class="step-circle" id="step-circle-1" data-status="active">1</div>
+              <div class="step-line" id="step-line-1"></div>
+            </div>
+            <div>
+              <div class="step-title" id="step-title-1" style="color:#13203a;">Upload data</div>
+              <div class="step-sub"   id="step-sub-1"   style="color:#5a6a86;">Base, peak &amp; energy CSVs</div>
+            </div>
           </div>
-        </header>
+          <div class="step-item" onclick="goToStep(2)">
+            <div class="step-col">
+              <div class="step-circle" id="step-circle-2">2</div>
+              <div class="step-line" id="step-line-2"></div>
+            </div>
+            <div>
+              <div class="step-title" id="step-title-2">Configure</div>
+              <div class="step-sub"   id="step-sub-2">Dates, years &amp; output</div>
+            </div>
+          </div>
+          <div class="step-item" onclick="goToStep(3)">
+            <div class="step-col">
+              <div class="step-circle" id="step-circle-3">3</div>
+              <div class="step-line" id="step-line-3" data-last="true"></div>
+            </div>
+            <div>
+              <div class="step-title" id="step-title-3">Generate</div>
+              <div class="step-sub"   id="step-sub-3">Run &amp; export</div>
+            </div>
+          </div>
+        </div>
 
-        <form id="profile-form" class="tool-grid">
-          <section class="glass-panel intake-panel" aria-labelledby="files-heading">
-            <div class="section-head">
-              <div>
-                <p class="section-kicker">Inputs</p>
-                <h2 id="files-heading">Files</h2>
-              </div>
-              <span class="tiny-note">CSV only</span>
-            </div>
-            <div class="file-stack">
-              <label class="file-tile" data-file-tile>
-                <input required type="file" name="base_profile" accept=".csv,text/csv" />
-                <span class="file-mark">B</span>
-                <span>
-                  <strong>Base profile</strong>
-                  <em data-file-name>Choose CSV</em>
-                </span>
-              </label>
-              <label class="file-tile" data-file-tile>
-                <input required type="file" name="peak_projection" accept=".csv,text/csv" />
-                <span class="file-mark">P</span>
-                <span>
-                  <strong>Peak projection (MW)</strong>
-                  <em data-file-name>Choose CSV</em>
-                </span>
-              </label>
-              <label class="file-tile" data-file-tile>
-                <input required type="file" name="energy_projection" accept=".csv,text/csv" />
-                <span class="file-mark">E</span>
-                <span>
-                  <strong>Energy projection (GWh)</strong>
-                  <em data-file-name>Choose CSV</em>
-                </span>
-              </label>
-            </div>
-          </section>
+        <!-- Step panels -->
+        <div class="step-content">
 
-          <section class="glass-panel config-panel" aria-labelledby="config-heading">
-            <div class="section-head">
-              <div>
-                <p class="section-kicker">Projection</p>
-                <h2 id="config-heading">Dates and Output</h2>
+          <!-- ── Step 1: Upload ── -->
+          <div class="step-panel active" id="panel-1">
+            <div style="font:600 12px 'JetBrains Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#3b6ef6;margin-bottom:9px;">Step 1 — Inputs</div>
+            <h2 style="font-size:23px;font-weight:800;letter-spacing:-0.02em;margin-bottom:6px;">Upload your data</h2>
+            <p style="color:#5a6a86;font-size:14px;margin-bottom:24px;">Three CSV files describe the base shape and the targets to project toward.</p>
+
+            <div style="display:flex;flex-direction:column;gap:12px;">
+              <!-- Base profile -->
+              <label class="file-tile" id="tile-base" data-key="base">
+                <input type="file" accept=".csv,text/csv" id="input-base" style="position:absolute;width:0;height:0;opacity:0;">
+                <div class="file-badge" id="badge-base">B</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:700;font-size:14.5px;">Base profile</div>
+                  <div class="file-name" id="name-base">Drag &amp; drop or click to browse</div>
+                </div>
+                <div style="font:600 11px 'JetBrains Mono',monospace;color:#9aa7bd;flex:none;" id="action-base">CSV</div>
+              </label>
+              <!-- Peak projection -->
+              <label class="file-tile" id="tile-peak" data-key="peak">
+                <input type="file" accept=".csv,text/csv" id="input-peak" style="position:absolute;width:0;height:0;opacity:0;">
+                <div class="file-badge" id="badge-peak">P</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:700;font-size:14.5px;">Peak projection</div>
+                  <div class="file-name" id="name-peak">Drag &amp; drop or click to browse</div>
+                </div>
+                <div style="font:600 11px 'JetBrains Mono',monospace;color:#9aa7bd;flex:none;" id="action-peak">CSV</div>
+              </label>
+              <!-- Energy projection -->
+              <label class="file-tile" id="tile-energy" data-key="energy">
+                <input type="file" accept=".csv,text/csv" id="input-energy" style="position:absolute;width:0;height:0;opacity:0;">
+                <div class="file-badge" id="badge-energy">E</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:700;font-size:14.5px;">Energy projection</div>
+                  <div class="file-name" id="name-energy">Drag &amp; drop or click to browse</div>
+                </div>
+                <div style="font:600 11px 'JetBrains Mono',monospace;color:#9aa7bd;flex:none;" id="action-energy">CSV</div>
+              </label>
+            </div>
+
+            <div style="display:flex;justify-content:flex-end;margin-top:28px;">
+              <button class="btn btn-primary" id="continue-1" onclick="goNext()" disabled>Continue →</button>
+            </div>
+          </div>
+
+          <!-- ── Step 2: Configure ── -->
+          <div class="step-panel" id="panel-2">
+            <div style="font:600 12px 'JetBrains Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#3b6ef6;margin-bottom:9px;">Step 2 — Projection</div>
+            <h2 style="font-size:23px;font-weight:800;letter-spacing:-0.02em;margin-bottom:6px;">Configure the run</h2>
+            <p style="color:#5a6a86;font-size:14px;margin-bottom:24px;">Set the base period, the years to project, and where the output CSV should land.</p>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+              <div class="field">
+                <label for="f-base-start">Base start date</label>
+                <input type="date" id="f-base-start" value="2024-04-01">
+              </div>
+              <div class="field">
+                <label for="f-base-end">Base end date</label>
+                <input type="date" id="f-base-end" value="2025-03-31">
+              </div>
+              <div class="field">
+                <label for="f-start-year">Projection start year</label>
+                <input type="number" id="f-start-year" value="2025" min="1900" max="2200">
+              </div>
+              <div class="field">
+                <label for="f-end-year">Projection end year</label>
+                <input type="number" id="f-end-year" value="2035" min="1900" max="2200">
+              </div>
+              <div class="field" style="grid-column:1/-1;">
+                <label for="f-profile">Profile name</label>
+                <input type="text" id="f-profile" placeholder="output file name">
+              </div>
+              <div class="field" style="grid-column:1/-1;">
+                <label for="f-folder">Output folder</label>
+                <div style="display:flex;gap:10px;">
+                  <input type="text" id="f-folder" readonly placeholder="No folder selected">
+                  <button type="button" class="btn btn-ghost" id="btn-choose-folder" onclick="chooseFolder()" style="height:44px;padding:0 18px;">Choose…</button>
+                </div>
               </div>
             </div>
-            <div class="form-grid">
-              <label class="field">
-                <span>Base start date</span>
-                <input required type="date" name="base_start_date" value="2024-04-01" />
-              </label>
-              <label class="field">
-                <span>Base end date</span>
-                <input required type="date" name="base_end_date" value="2025-03-31" />
-              </label>
-              <label class="field">
-                <span>Projection start year</span>
-                <input required type="number" name="projection_start_year" value="2025" min="1900" max="2200" />
-              </label>
-              <label class="field">
-                <span>Projection end year</span>
-                <input required type="number" name="projection_end_year" value="2035" min="1900" max="2200" />
-              </label>
-              <label class="field">
-                <span>Profile name</span>
-                <input type="text" name="profile_name" value="odisha" />
-              </label>
-              <label class="field folder-field">
-                <span>Output folder</span>
-                <input required readonly type="text" id="output-folder" name="output_folder" placeholder="Choose a folder" />
-              </label>
+
+            <div style="display:flex;justify-content:space-between;margin-top:28px;">
+              <button class="btn btn-ghost" onclick="goBack()">← Back</button>
+              <button class="btn btn-primary" id="continue-2" onclick="goNext()" disabled>Continue →</button>
             </div>
-            <div class="config-actions">
-              <button type="button" class="button secondary" id="choose-folder">Choose Folder</button>
-              <button type="submit" class="button primary" id="generate">
-                <span class="button-shimmer"></span>
-                Generate CSV
+          </div>
+
+          <!-- ── Step 3: Generate ── -->
+          <div class="step-panel" id="panel-3">
+            <div style="font:600 12px 'JetBrains Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#3b6ef6;margin-bottom:9px;">Step 3 — Run</div>
+            <h2 style="font-size:23px;font-weight:800;letter-spacing:-0.02em;margin-bottom:6px;">Review &amp; generate</h2>
+            <p style="color:#5a6a86;font-size:14px;margin-bottom:22px;">Confirm everything looks right, then build the projected profile.</p>
+
+            <div style="border:1px solid rgba(120,140,170,0.2);border-radius:16px;background:rgba(255,255,255,0.42);padding:4px 20px;margin-bottom:24px;" id="review-rows"></div>
+
+            <div id="progress-area" hidden>
+              <div style="display:flex;justify-content:space-between;margin-bottom:11px;">
+                <span style="font:600 13.5px 'Manrope',sans-serif;color:#13203a;" id="progress-label">Processing…</span>
+                <span style="font:600 13.5px 'JetBrains Mono',monospace;color:#3b6ef6;" id="progress-pct">0%</span>
+              </div>
+              <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+            </div>
+
+            <div id="generate-btn-area">
+              <button class="btn btn-primary" id="btn-generate" onclick="runGenerate()" style="width:100%;height:54px;font-size:15.5px;">
+                <span class="btn-shimmer"></span>
+                <span style="position:relative;z-index:1;">Generate projected CSV</span>
               </button>
             </div>
-          </section>
 
-          <aside class="glass-panel checks-panel" aria-labelledby="checks-heading">
-            <div class="section-head compact">
+            <div style="margin-top:20px;">
+              <button class="btn btn-ghost" id="btn-back-3" onclick="goBack()">← Back</button>
+            </div>
+          </div>
+
+        </div><!-- /step-content -->
+      </div><!-- /card-grid #form-section -->
+
+      <!-- Results (replaces stepper when done) -->
+      <div id="results-section" hidden>
+        <div class="results-panel">
+
+          <!-- Top bar -->
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-bottom:24px;">
+            <div style="min-width:0;">
+              <div style="display:inline-flex;align-items:center;gap:8px;font:600 12px 'JetBrains Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#0e8f80;margin-bottom:9px;">
+                <span style="width:8px;height:8px;border-radius:50%;background:#12b3a0;box-shadow:0 0 0 4px rgba(18,179,160,0.18);display:inline-block;"></span>Run complete
+              </div>
+              <h2 style="font-size:23px;font-weight:800;letter-spacing:-0.02em;">Projection ready</h2>
+              <div style="display:flex;align-items:center;gap:10px;margin-top:9px;flex-wrap:wrap;">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#5a6a86;overflow-wrap:anywhere;" id="output-path-text"></span>
+                <button class="copy-btn" onclick="copyOutputPath()">Copy path</button>
+              </div>
+            </div>
+            <button class="btn btn-ghost" onclick="newRun()">↺ New run</button>
+          </div>
+
+          <!-- Metric tiles -->
+          <div class="metrics-grid" id="metrics-grid"></div>
+
+          <!-- Chart panel -->
+          <div style="padding:22px;border-radius:18px;background:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.7);margin-bottom:20px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:15px;">
               <div>
-                <p class="section-kicker">Run</p>
-                <h2 id="checks-heading">Checks</h2>
+                <div class="kicker">Shape comparison</div>
+                <h3 style="font-size:17px;font-weight:700;">Normalized profile view</h3>
+              </div>
+              <div style="display:flex;align-items:center;gap:16px;font:600 12px 'Manrope',sans-serif;color:#5a6a86;">
+                <span style="display:inline-flex;align-items:center;gap:7px;"><span style="width:18px;height:0;border-top:2px dashed #1b2740;display:inline-block;"></span>Mapped base</span>
+                <span style="display:inline-flex;align-items:center;gap:7px;"><span style="width:18px;height:2px;background:#3b6ef6;display:inline-block;border-radius:2px;"></span>Projected</span>
               </div>
             </div>
-            <div class="metric-grid">
-              <div class="metric">
-                <span>Rows</span>
-                <strong id="metric-rows">-</strong>
-              </div>
-              <div class="metric">
-                <span>Years</span>
-                <strong id="metric-years">-</strong>
-              </div>
-              <div class="metric">
-                <span>Periods/day</span>
-                <strong id="metric-periods">-</strong>
-              </div>
-              <div class="metric">
-                <span>Output</span>
-                <strong id="metric-output">Waiting</strong>
-              </div>
+            <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:15px;">
+              <div style="display:flex;gap:8px;flex-wrap:wrap;" id="year-chips"></div>
+              <button class="reset-zoom-btn" onclick="resetChartView()">Reset zoom</button>
             </div>
-            <div id="status" class="status">Ready</div>
-          </aside>
-        </form>
+            <div style="position:relative;height:300px;border-radius:12px;overflow:hidden;background:rgba(255,255,255,0.4);">
+              <canvas id="profile-chart" style="display:block;width:100%;height:100%;cursor:grab;"></canvas>
+              <div id="chart-tooltip" style="position:absolute;pointer-events:none;opacity:0;transition:opacity .15s;background:rgba(255,255,255,0.92);backdrop-filter:blur(12px);border:1px solid rgba(120,140,170,0.25);border-radius:10px;padding:10px 12px;box-shadow:0 12px 28px -8px rgba(30,52,98,0.28);min-width:172px;font-size:12px;font-family:'Manrope',sans-serif;"></div>
+            </div>
+            <div style="text-align:right;font:500 11.5px 'Manrope',sans-serif;color:#9aa7bd;margin-top:9px;">Scroll to zoom &middot; drag to pan &middot; double-click to reset &middot; hover to inspect</div>
+          </div>
 
-        <section class="chart-shell glass-panel" id="chart-shell" hidden>
-          <div class="chart-head">
-            <div>
-              <p class="section-kicker">Shape comparison</p>
-              <h2>Normalized Profile View</h2>
+          <!-- Summary table -->
+          <div style="border-radius:18px;background:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.7);overflow:hidden;">
+            <div style="padding:18px 22px 10px;">
+              <div class="kicker">Year-by-year</div>
+              <h3 style="font-size:17px;font-weight:700;">Run summary</h3>
             </div>
-            <div class="chart-actions">
-              <button type="button" class="button ghost" id="reset-chart">Reset</button>
-              <button type="button" class="button ghost" id="expand-chart">Fullscreen</button>
+            <div style="overflow-x:auto;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Financial year</th>
+                    <th>Rows</th>
+                    <th>Peak MW</th>
+                    <th>Energy GWh</th>
+                    <th>Peak YoY</th>
+                    <th>Energy YoY</th>
+                  </tr>
+                </thead>
+                <tbody id="summary-tbody"></tbody>
+              </table>
             </div>
           </div>
-          <div class="legend-row" id="legend-row"></div>
-          <div class="chart-frame">
-            <canvas id="profile-chart" aria-label="Normalized demand profile comparison"></canvas>
-            <div class="chart-tooltip" id="chart-tooltip" hidden></div>
-          </div>
-          <div class="chart-hint">Wheel to zoom, drag to pan, double-click to reset.</div>
-        </section>
 
-        <section class="result-panel glass-panel" id="result-panel" hidden>
-          <div class="result-head">
-            <div>
-              <p class="section-kicker">Output</p>
-              <h2>Run Summary</h2>
-              <p id="output-path"></p>
-            </div>
-            <button type="button" class="button secondary" id="copy-path">Copy Path</button>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Financial Year</th>
-                  <th>Rows</th>
-                  <th>Peak MW</th>
-                  <th>Energy GWh</th>
-                  <th>Peak YoY %</th>
-                  <th>Energy YoY %</th>
-                </tr>
-              </thead>
-              <tbody id="summary-body"></tbody>
-            </table>
-          </div>
-        </section>
-      </section>
-    </main>
-    <script src="/app.js"></script>
-  </body>
+        </div><!-- /results-panel -->
+      </div><!-- /results-section -->
+
+    </div><!-- /glass-card -->
+  </div><!-- /shell -->
+</div><!-- /app-bg -->
+<script src="app.js"></script>
+</body>
 </html>

@@ -38,6 +38,150 @@ def resource_path(*parts: str) -> Path:
 STATIC_DIR = resource_path("profile_tool", "static")
 
 
+def _choose_windows_folder(title: str) -> str:
+    import ctypes
+    import uuid
+    from ctypes import wintypes
+
+    HRESULT = ctypes.c_long
+    SIGDN_FILESYSPATH = 0x80058000
+    CLSCTX_INPROC_SERVER = 0x1
+    COINIT_APARTMENTTHREADED = 0x2
+    RPC_E_CHANGED_MODE = 0x80010106
+    HRESULT_CANCELLED = 0x800704C7
+
+    FOS_NOCHANGEDIR = 0x00000008
+    FOS_PICKFOLDERS = 0x00000020
+    FOS_FORCEFILESYSTEM = 0x00000040
+    FOS_PATHMUSTEXIST = 0x00000800
+
+    class GUID(ctypes.Structure):
+        _fields_ = [
+            ("Data1", wintypes.DWORD),
+            ("Data2", wintypes.WORD),
+            ("Data3", wintypes.WORD),
+            ("Data4", ctypes.c_ubyte * 8),
+        ]
+
+    def guid(value: str) -> GUID:
+        return GUID.from_buffer_copy(uuid.UUID(value).bytes_le)
+
+    def failed(hr: int) -> bool:
+        return (hr & 0xFFFFFFFF) >= 0x80000000
+
+    def check(hr: int, message: str) -> None:
+        if failed(hr):
+            raise OSError(hr, message)
+
+    def com_method(obj: ctypes.c_void_p, index: int, restype, *argtypes):
+        vtable = ctypes.cast(
+            obj, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))
+        ).contents
+        return ctypes.WINFUNCTYPE(restype, ctypes.c_void_p, *argtypes)(vtable[index])
+
+    ole32 = ctypes.OleDLL("ole32")
+    user32 = ctypes.WinDLL("user32")
+
+    ole32.CoInitializeEx.argtypes = [ctypes.c_void_p, wintypes.DWORD]
+    ole32.CoInitializeEx.restype = HRESULT
+    ole32.CoCreateInstance.argtypes = [
+        ctypes.POINTER(GUID),
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.POINTER(GUID),
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    ole32.CoCreateInstance.restype = HRESULT
+    ole32.CoTaskMemFree.argtypes = [ctypes.c_void_p]
+    user32.GetForegroundWindow.restype = wintypes.HWND
+
+    clsid_file_open_dialog = guid("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7")
+    iid_file_open_dialog = guid("D57C7288-D4AD-4768-BE02-9D969532D960")
+
+    initialized = False
+    dialog = ctypes.c_void_p()
+    item = ctypes.c_void_p()
+    path_ptr = wintypes.LPWSTR()
+    try:
+        hr = ole32.CoInitializeEx(None, COINIT_APARTMENTTHREADED)
+        if failed(hr) and (hr & 0xFFFFFFFF) != RPC_E_CHANGED_MODE:
+            check(hr, "Could not initialize the Windows folder picker.")
+        initialized = not failed(hr)
+
+        check(
+            ole32.CoCreateInstance(
+                ctypes.byref(clsid_file_open_dialog),
+                None,
+                CLSCTX_INPROC_SERVER,
+                ctypes.byref(iid_file_open_dialog),
+                ctypes.byref(dialog),
+            ),
+            "Could not create the Windows folder picker.",
+        )
+
+        get_options = com_method(
+            dialog, 10, HRESULT, ctypes.POINTER(wintypes.DWORD)
+        )
+        set_options = com_method(dialog, 9, HRESULT, wintypes.DWORD)
+        set_title = com_method(dialog, 17, HRESULT, wintypes.LPCWSTR)
+        set_ok_label = com_method(dialog, 18, HRESULT, wintypes.LPCWSTR)
+        show = com_method(dialog, 3, HRESULT, wintypes.HWND)
+        get_result = com_method(
+            dialog, 20, HRESULT, ctypes.POINTER(ctypes.c_void_p)
+        )
+
+        options = wintypes.DWORD()
+        check(get_options(dialog, ctypes.byref(options)), "Could not read picker options.")
+        options.value |= (
+            FOS_PICKFOLDERS
+            | FOS_FORCEFILESYSTEM
+            | FOS_PATHMUSTEXIST
+            | FOS_NOCHANGEDIR
+        )
+        check(set_options(dialog, options), "Could not configure the folder picker.")
+        check(set_title(dialog, title), "Could not set the folder picker title.")
+        set_ok_label(dialog, "Select Folder")
+
+        owner = user32.GetForegroundWindow()
+        hr = show(dialog, owner)
+        if (hr & 0xFFFFFFFF) == HRESULT_CANCELLED:
+            return ""
+        check(hr, "Could not show the Windows folder picker.")
+
+        check(get_result(dialog, ctypes.byref(item)), "Could not read selected folder.")
+        get_display_name = com_method(
+            item, 5, HRESULT, wintypes.DWORD, ctypes.POINTER(wintypes.LPWSTR)
+        )
+        check(
+            get_display_name(item, SIGDN_FILESYSPATH, ctypes.byref(path_ptr)),
+            "Could not read selected folder path.",
+        )
+        return path_ptr.value or ""
+    finally:
+        if ctypes.cast(path_ptr, ctypes.c_void_p).value:
+            ole32.CoTaskMemFree(ctypes.cast(path_ptr, ctypes.c_void_p))
+        if item.value:
+            release_item = com_method(item, 2, wintypes.ULONG)
+            release_item(item)
+        if dialog.value:
+            release_dialog = com_method(dialog, 2, wintypes.ULONG)
+            release_dialog(dialog)
+        if initialized:
+            ole32.CoUninitialize()
+
+
+def _choose_tkinter_folder(title: str) -> str | None:
+    if tk is None or filedialog is None:
+        return None
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    try:
+        return filedialog.askdirectory(title=title)
+    finally:
+        root.destroy()
+
+
 @dataclass
 class UploadedField:
     value: str = ""
@@ -102,19 +246,29 @@ class ProfileToolHandler(SimpleHTTPRequestHandler):
         self.wfile.write(data)
 
     def _choose_output_folder(self) -> None:
-        if tk is None or filedialog is None:
+        title = "Choose output folder"
+        if sys.platform == "win32":
+            try:
+                selected = _choose_windows_folder(title)
+            except Exception as exc:
+                self._send_json(
+                    {
+                        "ok": False,
+                        "error": f"Could not open the Windows folder picker: {exc}",
+                    },
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+                return
+            self._send_json({"ok": True, "path": selected})
+            return
+
+        selected = _choose_tkinter_folder(title)
+        if selected is None:
             self._send_json(
                 {"ok": False, "error": "Native folder picker is unavailable."},
                 HTTPStatus.INTERNAL_SERVER_ERROR,
             )
             return
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes("-topmost", True)
-        try:
-            selected = filedialog.askdirectory(title="Choose output folder")
-        finally:
-            root.destroy()
         self._send_json({"ok": True, "path": selected})
 
     def _generate(self) -> None:

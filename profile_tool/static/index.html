@@ -86,7 +86,13 @@
                 <input type="file" accept=".csv,text/csv" id="input-base" style="position:absolute;width:0;height:0;opacity:0;">
                 <div class="file-badge" id="badge-base">B</div>
                 <div style="flex:1;min-width:0;">
-                  <div style="font-weight:700;font-size:14.5px;">Base profile</div>
+                  <div class="file-title-row">
+                    <span>Base profile</span>
+                    <span class="info-popover">
+                      <span class="info-trigger" role="button" tabindex="0" aria-label="Base profile CSV format" aria-describedby="help-base" aria-expanded="false">i</span>
+                      <span class="info-balloon" id="help-base" role="tooltip">Data is accepted in either format: Month, Day, Period and Demand columns, or one demand column arranged chronologically. Period represents intervals within a day: 1-24 for hourly, 1-48 for 30-minute, or 1-96 for 15-minute data.</span>
+                    </span>
+                  </div>
                   <div class="file-name" id="name-base">Drag &amp; drop or click to browse</div>
                 </div>
                 <div style="font:600 11px 'JetBrains Mono',monospace;color:#9aa7bd;flex:none;" id="action-base">CSV</div>
@@ -96,7 +102,13 @@
                 <input type="file" accept=".csv,text/csv" id="input-peak" style="position:absolute;width:0;height:0;opacity:0;">
                 <div class="file-badge" id="badge-peak">P</div>
                 <div style="flex:1;min-width:0;">
-                  <div style="font-weight:700;font-size:14.5px;">Peak projection</div>
+                  <div class="file-title-row">
+                    <span>Peak projection</span>
+                    <span class="info-popover">
+                      <span class="info-trigger" role="button" tabindex="0" aria-label="Peak projection CSV format" aria-describedby="help-peak" aria-expanded="false">i</span>
+                      <span class="info-balloon" id="help-peak" role="tooltip">Data is accepted as one row per projection year, with a DateTime column containing a date and a peak-demand column in MW.</span>
+                    </span>
+                  </div>
                   <div class="file-name" id="name-peak">Drag &amp; drop or click to browse</div>
                 </div>
                 <div style="font:600 11px 'JetBrains Mono',monospace;color:#9aa7bd;flex:none;" id="action-peak">CSV</div>
@@ -106,7 +118,13 @@
                 <input type="file" accept=".csv,text/csv" id="input-energy" style="position:absolute;width:0;height:0;opacity:0;">
                 <div class="file-badge" id="badge-energy">E</div>
                 <div style="flex:1;min-width:0;">
-                  <div style="font-weight:700;font-size:14.5px;">Energy projection</div>
+                  <div class="file-title-row">
+                    <span>Energy projection</span>
+                    <span class="info-popover">
+                      <span class="info-trigger" role="button" tabindex="0" aria-label="Energy projection CSV format" aria-describedby="help-energy" aria-expanded="false">i</span>
+                      <span class="info-balloon" id="help-energy" role="tooltip">Data is accepted as one row per projection year, with a DateTime column containing a date and an energy-requirement column in GWh.</span>
+                    </span>
+                  </div>
                   <div class="file-name" id="name-energy">Drag &amp; drop or click to browse</div>
                 </div>
                 <div style="font:600 11px 'JetBrains Mono',monospace;color:#9aa7bd;flex:none;" id="action-energy">CSV</div>

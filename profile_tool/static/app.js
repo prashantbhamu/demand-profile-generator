@@ -209,6 +209,76 @@ function setupFileTiles() {
   });
 }
 
+// ── CSV format help ──────────────────────────────────────────
+function setupInfoPopovers() {
+  const popovers = Array.from(document.querySelectorAll('.info-popover'));
+
+  const setOpen = (popover, open) => {
+    const balloon = popover.querySelector('.info-balloon');
+    if (!balloon) return;
+    balloon.classList.toggle('is-open', open);
+    if (open) {
+      balloon.style.opacity = '1';
+      balloon.style.visibility = 'visible';
+      balloon.style.transform = window.matchMedia('(max-width: 700px)').matches
+        ? 'translateY(0)'
+        : 'translate(-18%, 0)';
+    } else {
+      balloon.style.removeProperty('opacity');
+      balloon.style.removeProperty('visibility');
+      balloon.style.removeProperty('transform');
+    }
+  };
+
+  const closeAll = except => {
+    popovers.forEach(popover => {
+      if (popover === except) return;
+      popover.dataset.pinned = 'false';
+      setOpen(popover, false);
+      popover.querySelector('.info-trigger')?.setAttribute('aria-expanded', 'false');
+    });
+  };
+
+  popovers.forEach(popover => {
+    const trigger = popover.querySelector('.info-trigger');
+    const balloon = popover.querySelector('.info-balloon');
+    if (!trigger || !balloon) return;
+
+    trigger.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const willOpen = popover.dataset.pinned !== 'true';
+      closeAll(popover);
+      popover.dataset.pinned = String(willOpen);
+      setOpen(popover, willOpen);
+      trigger.setAttribute('aria-expanded', String(willOpen));
+    });
+
+    popover.addEventListener('mouseenter', () => setOpen(popover, true));
+    popover.addEventListener('mouseleave', () => {
+      if (popover.dataset.pinned !== 'true') setOpen(popover, false);
+    });
+    trigger.addEventListener('focus', () => setOpen(popover, true));
+    trigger.addEventListener('blur', () => {
+      if (popover.dataset.pinned !== 'true') setOpen(popover, false);
+    });
+
+    trigger.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        trigger.click();
+      } else if (event.key === 'Escape') {
+        popover.dataset.pinned = 'false';
+        setOpen(popover, false);
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.blur();
+      }
+    });
+  });
+
+  document.addEventListener('click', () => closeAll());
+}
+
 // ── Folder picker ────────────────────────────────────────────
 async function chooseFolder() {
   const btn = document.getElementById('btn-choose-folder');
@@ -598,6 +668,7 @@ function setupChartInteractions() {
 // ── Boot ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   setupFileTiles();
+  setupInfoPopovers();
   setupChartInteractions();
   render();
 });

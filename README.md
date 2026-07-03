@@ -15,9 +15,10 @@ Profiles with 24, 48, or 96 periods per day are supported.
 
 ## Run From Source
 
-Python 3.10 or later is required. From the project root, run:
+Python 3.10 or later is required. Install the workbook dependency, then run:
 
 ```powershell
+python -m pip install -r requirements.txt
 python -m profile_tool
 ```
 
@@ -35,9 +36,9 @@ Then open `http://127.0.0.1:8765/`. Stop the application with `Ctrl+C`.
 
 The interface accepts:
 
-- a base demand-profile CSV;
-- an annual peak-projection CSV in MW;
-- an annual energy-projection CSV in GWh;
+- a base demand-profile CSV or XLSX file;
+- an annual peak-projection CSV or XLSX file in MW;
+- an annual energy-projection CSV or XLSX file in GWh;
 - the base profile's start and end dates;
 - the first and last projection years; and
 - an output folder.
@@ -48,7 +49,7 @@ The preferred base-profile columns are:
 Month,Day,Period,<demand value>
 ```
 
-A sequential CSV containing one usable numeric profile column is also supported. Peak and energy projection files require a `DateTime` column and one numeric value column.
+A sequential file containing one usable numeric profile column is also supported. Peak and energy projection files require a `DateTime` column and one numeric value column. For XLSX workbooks, the active populated worksheet is read first.
 
 ## Output
 

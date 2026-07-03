@@ -336,7 +336,13 @@ class ProfileToolHandler(SimpleHTTPRequestHandler):
         if item is None or not item.filename:
             raise ProfileGenerationError(f"Missing required file: {name}.")
         filename = Path(item.filename).name or f"{name}.csv"
-        path = temp_dir / filename
+        if Path(filename).suffix.lower() not in {".csv", ".xlsx"}:
+            raise ProfileGenerationError(
+                f"{filename} must be a CSV or XLSX file."
+            )
+        upload_dir = temp_dir / name
+        upload_dir.mkdir()
+        path = upload_dir / filename
         with path.open("wb") as handle:
             handle.write(item.data)
         return path

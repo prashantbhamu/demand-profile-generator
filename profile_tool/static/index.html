@@ -46,7 +46,7 @@
             </div>
             <div>
               <div class="step-title" id="step-title-1" style="color:#13203a;">Upload data</div>
-              <div class="step-sub"   id="step-sub-1"   style="color:#5a6a86;">Base, peak &amp; energy CSVs</div>
+              <div class="step-sub"   id="step-sub-1"   style="color:#5a6a86;">Base, peak &amp; energy files</div>
             </div>
           </div>
           <div class="step-item" onclick="goToStep(2)">
@@ -78,56 +78,56 @@
           <div class="step-panel active" id="panel-1">
             <div style="font:600 12px 'JetBrains Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#3b6ef6;margin-bottom:9px;">Step 1 — Inputs</div>
             <h2 style="font-size:23px;font-weight:800;letter-spacing:-0.02em;margin-bottom:6px;">Upload your data</h2>
-            <p style="color:#5a6a86;font-size:14px;margin-bottom:24px;">Three CSV files describe the base shape and the targets to project toward.</p>
+            <p style="color:#5a6a86;font-size:14px;margin-bottom:24px;">Upload CSV or XLSX files for the base shape and projection targets.</p>
 
             <div style="display:flex;flex-direction:column;gap:12px;">
               <!-- Base profile -->
               <label class="file-tile" id="tile-base" data-key="base">
-                <input type="file" accept=".csv,text/csv" id="input-base" style="position:absolute;width:0;height:0;opacity:0;">
+                <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" id="input-base" style="position:absolute;width:0;height:0;opacity:0;">
                 <div class="file-badge" id="badge-base">B</div>
                 <div style="flex:1;min-width:0;">
                   <div class="file-title-row">
                     <span>Base profile</span>
                     <span class="info-popover">
-                      <span class="info-trigger" role="button" tabindex="0" aria-label="Base profile CSV format" aria-describedby="help-base" aria-expanded="false">i</span>
-                      <span class="info-balloon" id="help-base" role="tooltip">Data is accepted in either format: Month, Day, Period and Demand columns, or one demand column arranged chronologically. Period represents intervals within a day: 1-24 for hourly, 1-48 for 30-minute, or 1-96 for 15-minute data.</span>
+                      <span class="info-trigger" role="button" tabindex="0" aria-label="Base profile input format" aria-describedby="help-base" aria-expanded="false">i</span>
+                      <span class="info-balloon" id="help-base" role="tooltip">Upload a CSV or XLSX file. Data is accepted in either structure: Month, Day, Period and Demand columns, or one demand column arranged chronologically. Period represents intervals within a day: 1-24 for hourly, 1-48 for 30-minute, or 1-96 for 15-minute data.</span>
                     </span>
                   </div>
                   <div class="file-name" id="name-base">Drag &amp; drop or click to browse</div>
                 </div>
-                <div style="font:600 11px 'JetBrains Mono',monospace;color:#9aa7bd;flex:none;" id="action-base">CSV</div>
+                <div style="font:600 11px 'JetBrains Mono',monospace;color:#9aa7bd;flex:none;" id="action-base">CSV / XLSX</div>
               </label>
               <!-- Peak projection -->
               <label class="file-tile" id="tile-peak" data-key="peak">
-                <input type="file" accept=".csv,text/csv" id="input-peak" style="position:absolute;width:0;height:0;opacity:0;">
+                <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" id="input-peak" style="position:absolute;width:0;height:0;opacity:0;">
                 <div class="file-badge" id="badge-peak">P</div>
                 <div style="flex:1;min-width:0;">
                   <div class="file-title-row">
                     <span>Peak projection</span>
                     <span class="info-popover">
-                      <span class="info-trigger" role="button" tabindex="0" aria-label="Peak projection CSV format" aria-describedby="help-peak" aria-expanded="false">i</span>
-                      <span class="info-balloon" id="help-peak" role="tooltip">Data is accepted as one row per projection year, with a DateTime column containing a date and a peak-demand column in MW.</span>
+                      <span class="info-trigger" role="button" tabindex="0" aria-label="Peak projection input format" aria-describedby="help-peak" aria-expanded="false">i</span>
+                      <span class="info-balloon" id="help-peak" role="tooltip">Upload a CSV or XLSX file with one row per projection year, a DateTime column containing a date, and a peak-demand column in MW.</span>
                     </span>
                   </div>
                   <div class="file-name" id="name-peak">Drag &amp; drop or click to browse</div>
                 </div>
-                <div style="font:600 11px 'JetBrains Mono',monospace;color:#9aa7bd;flex:none;" id="action-peak">CSV</div>
+                <div style="font:600 11px 'JetBrains Mono',monospace;color:#9aa7bd;flex:none;" id="action-peak">CSV / XLSX</div>
               </label>
               <!-- Energy projection -->
               <label class="file-tile" id="tile-energy" data-key="energy">
-                <input type="file" accept=".csv,text/csv" id="input-energy" style="position:absolute;width:0;height:0;opacity:0;">
+                <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" id="input-energy" style="position:absolute;width:0;height:0;opacity:0;">
                 <div class="file-badge" id="badge-energy">E</div>
                 <div style="flex:1;min-width:0;">
                   <div class="file-title-row">
                     <span>Energy projection</span>
                     <span class="info-popover">
-                      <span class="info-trigger" role="button" tabindex="0" aria-label="Energy projection CSV format" aria-describedby="help-energy" aria-expanded="false">i</span>
-                      <span class="info-balloon" id="help-energy" role="tooltip">Data is accepted as one row per projection year, with a DateTime column containing a date and an energy-requirement column in GWh.</span>
+                      <span class="info-trigger" role="button" tabindex="0" aria-label="Energy projection input format" aria-describedby="help-energy" aria-expanded="false">i</span>
+                      <span class="info-balloon" id="help-energy" role="tooltip">Upload a CSV or XLSX file with one row per projection year, a DateTime column containing a date, and an energy-requirement column in GWh.</span>
                     </span>
                   </div>
                   <div class="file-name" id="name-energy">Drag &amp; drop or click to browse</div>
                 </div>
-                <div style="font:600 11px 'JetBrains Mono',monospace;color:#9aa7bd;flex:none;" id="action-energy">CSV</div>
+                <div style="font:600 11px 'JetBrains Mono',monospace;color:#9aa7bd;flex:none;" id="action-energy">CSV / XLSX</div>
               </label>
             </div>
 

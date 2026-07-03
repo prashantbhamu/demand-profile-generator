@@ -138,7 +138,7 @@ function renderFileTiles() {
     tile.dataset.loaded   = f ? 'true' : 'false';
     badge.textContent     = f ? '✓' : key[0].toUpperCase();
     name.textContent      = f ? f.name : 'Drag & drop or click to browse';
-    action.textContent    = f ? 'Replace' : 'CSV';
+    action.textContent    = f ? 'Replace' : 'CSV / XLSX';
   });
 }
 
@@ -175,7 +175,7 @@ function renderReview() {
   const baseEnd   = document.getElementById('f-base-end')?.value   || '';
   const profile   = document.getElementById('f-profile')?.value    || 'profile';
   const rows = [
-    { label: 'Input files',  value: '3 of 3 CSVs ready', style: 'font:700 13px Manrope,sans-serif;color:#0e8f80;' },
+    { label: 'Input files',  value: '3 of 3 files ready', style: 'font:700 13px Manrope,sans-serif;color:#0e8f80;' },
     { label: 'Base period',  value: `${fmtDate(baseStart)} → ${fmtDate(baseEnd)}`, style: 'font:600 13px Manrope,sans-serif;color:#13203a;' },
     { label: 'Projection',   value: `${fyLabel(startYear)} → ${fyLabel(endYear)} · ${Math.max(0, Number(endYear) - Number(startYear) + 1)} yrs`, style: 'font:600 13px Manrope,sans-serif;color:#13203a;' },
     { label: 'Output file',  value: `${profile}_projected.csv`, style: "font:600 12.5px 'JetBrains Mono',monospace;color:#42536e;" },
@@ -209,7 +209,7 @@ function setupFileTiles() {
   });
 }
 
-// ── CSV format help ──────────────────────────────────────────
+// ── Input format help ────────────────────────────────────────
 function setupInfoPopovers() {
   const popovers = Array.from(document.querySelectorAll('.info-popover'));
 

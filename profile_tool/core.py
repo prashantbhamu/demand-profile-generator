@@ -8,6 +8,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+try:
+    from openpyxl import load_workbook
+except ImportError:  # CSV support remains available without the optional dependency.
+    load_workbook = None
+
 
 OUTPUT_COLUMNS = ["year", "month", "day", "period", "projected demand"]
 DATE_FORMATS = ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%y")
@@ -120,6 +125,70 @@ def _read_csv_rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
             if any(value for value in cleaned.values()):
                 rows.append(cleaned)
     return fieldnames, rows
+
+
+def _cell_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, dt.datetime):
+        return value.date().isoformat()
+    if isinstance(value, dt.date):
+        return value.isoformat()
+    return str(value).strip()
+
+
+def _read_xlsx_rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
+    if load_workbook is None:
+        raise ProfileGenerationError(
+            "XLSX support is unavailable. Install the dependencies from requirements.txt."
+        )
+    try:
+        workbook = load_workbook(path, read_only=True, data_only=True)
+    except Exception as exc:
+        raise ProfileGenerationError(
+            f"Could not read Excel workbook {path.name}: {exc}"
+        ) from exc
+
+    try:
+        preferred = workbook.active
+        worksheets = [preferred] + [
+            sheet for sheet in workbook.worksheets if sheet is not preferred
+        ]
+        for worksheet in worksheets:
+            values = worksheet.iter_rows(values_only=True)
+            try:
+                header_row = next(values)
+            except StopIteration:
+                continue
+            fieldnames = [_clean_header(_cell_text(value)) for value in header_row]
+            if not any(fieldnames):
+                continue
+
+            rows = []
+            for row_values in values:
+                cleaned = {}
+                for index, name in enumerate(fieldnames):
+                    if not name:
+                        continue
+                    value = row_values[index] if index < len(row_values) else None
+                    cleaned[name] = _cell_text(value)
+                if any(value for value in cleaned.values()):
+                    rows.append(cleaned)
+            if rows:
+                return fieldnames, rows
+    finally:
+        workbook.close()
+
+    raise ProfileGenerationError(f"{path.name} has no populated worksheet.")
+
+
+def _read_tabular_rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
+    suffix = path.suffix.lower()
+    if suffix == ".csv":
+        return _read_csv_rows(path)
+    if suffix == ".xlsx":
+        return _read_xlsx_rows(path)
+    raise ProfileGenerationError(f"{path.name} must be a CSV or XLSX file.")
 
 
 def _find_required_column(fieldnames: Iterable[str], wanted: str, path: Path) -> str:
@@ -248,7 +317,7 @@ def load_base_profile(
     path: Path | str, base_start: dt.date, base_end: dt.date
 ) -> tuple[list[BaseDay], int, str]:
     path = Path(path)
-    fieldnames, rows = _read_csv_rows(path)
+    fieldnames, rows = _read_tabular_rows(path)
     try:
         month_col = _find_required_column(fieldnames, "Month", path)
         day_col = _find_required_column(fieldnames, "Day", path)
@@ -324,7 +393,7 @@ def load_base_profile(
 
 def load_targets(path: Path | str, preferred_name: str = "") -> dict[int, float]:
     path = Path(path)
-    fieldnames, rows = _read_csv_rows(path)
+    fieldnames, rows = _read_tabular_rows(path)
     date_col = _find_required_column(fieldnames, "DateTime", path)
     value_col = _find_value_column(
         fieldnames, rows, {date_col}, path, preferred_name=preferred_name

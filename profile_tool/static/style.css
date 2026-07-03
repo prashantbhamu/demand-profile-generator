@@ -55,6 +55,17 @@ button, input { font: inherit; }
   margin: 0 auto;
   padding: 46px 28px 64px;
 }
+.app-signature {
+  margin-top: 18px;
+  text-align: center;
+  color: #7f8da5;
+  font: 500 11.5px/1.5 'Manrope', sans-serif;
+  letter-spacing: .01em;
+}
+.app-signature span {
+  color: #5a6a86;
+  font-weight: 600;
+}
 
 /* ── Glass card ─────────────────────────────────────────── */
 .glass-card {

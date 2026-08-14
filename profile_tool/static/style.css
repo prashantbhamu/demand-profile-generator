@@ -332,8 +332,10 @@ button, input { font: inherit; }
   transition: border-color 0.25s, box-shadow 0.25s, background 0.25s;
 }
 .field input:focus { border-color: rgba(59,110,246,0.48); box-shadow: 0 0 0 4px rgba(59,110,246,0.12); background: rgba(255,255,255,0.9); }
+.field input[aria-invalid="true"] { border-color: rgba(180,35,24,0.55); box-shadow: 0 0 0 4px rgba(180,35,24,0.09); }
 .field input::placeholder { color: #94a3b8; opacity: 1; }
 .field input[readonly] { background: rgba(248,250,252,0.7); color: #42536e; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; }
+.field-error { min-height: 16px; margin-top: -3px; color: #b42318; font: 600 11.5px 'Manrope', sans-serif; }
 
 /* ── Status pill ────────────────────────────────────────── */
 .status-pill {

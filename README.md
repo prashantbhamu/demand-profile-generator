@@ -7,7 +7,7 @@ Local browser application for generating future demand profiles from a historica
 The tool:
 
 1. reads a historical demand profile;
-2. maps it to each future calendar while preserving weekday behaviour;
+2. maps it to each future financial year while preserving weekday behaviour;
 3. scales each projection year to its peak-demand and energy targets; and
 4. writes the projected interval-level demand to CSV.
 
@@ -39,9 +39,12 @@ The interface accepts:
 - a base demand-profile CSV or XLSX file;
 - an annual peak-projection CSV or XLSX file in MW;
 - an annual energy-projection CSV or XLSX file in GWh;
-- the base profile's start and end dates;
-- the first and last projection years; and
+- the base financial year, running from 1 April through 31 March;
+- the first and last projection financial years; and
 - an output folder.
+
+Financial years are entered as `YYYY-YY`. Entering a four-digit start year such as
+`2025` automatically completes it to `2025-26`.
 
 The preferred base-profile columns are:
 
@@ -56,10 +59,12 @@ A sequential file containing one usable numeric profile column is also supported
 The generated CSV contains:
 
 ```text
-year,month,day,period,projected demand
+Financial Year,year,month,day,period,projected demand
 ```
 
-Projected demand is written as whole MW. If the intended filename already exists, a timestamp is added instead of overwriting it.
+`Financial Year` identifies the projection block using `YYYY-YY`. Projected demand
+is written as whole MW. If the intended filename already exists, a timestamp is
+added instead of overwriting it.
 
 ## Results And Chart
 

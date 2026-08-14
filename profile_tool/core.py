@@ -14,7 +14,14 @@ except ImportError:  # CSV support remains available without the optional depend
     load_workbook = None
 
 
-OUTPUT_COLUMNS = ["year", "month", "day", "period", "projected demand"]
+OUTPUT_COLUMNS = [
+    "Financial Year",
+    "year",
+    "month",
+    "day",
+    "period",
+    "projected demand",
+]
 DATE_FORMATS = ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%y")
 
 
@@ -69,6 +76,14 @@ def parse_date(value: str) -> dt.date:
 
 def fiscal_year_label(start_year: int) -> str:
     return f"{start_year}-{str((start_year + 1) % 100).zfill(2)}"
+
+
+def validate_base_financial_year_period(start: dt.date, end: dt.date) -> None:
+    expected_end = dt.date(start.year + 1, 3, 31)
+    if (start.month, start.day) != (4, 1) or end != expected_end:
+        raise ProfileGenerationError(
+            "Base period must run from 1 April through 31 March of the following year."
+        )
 
 
 def date_range(start: dt.date, end: dt.date) -> list[dt.date]:
@@ -251,9 +266,14 @@ def _profile_dates_with_optional_omitted_leap_day(
     if row_count == len(dates) * periods_per_day:
         return dates, None
 
-    leap_day = dt.date(start.year if start.month <= 2 else end.year, 2, 29)
+    leap_year = start.year if start.month <= 2 else end.year
+    try:
+        leap_day = dt.date(leap_year, 2, 29)
+    except ValueError:
+        leap_day = None
     if (
-        leap_day in dates
+        leap_day is not None
+        and leap_day in dates
         and row_count == (len(dates) - 1) * periods_per_day
     ):
         return [date_value for date_value in dates if date_value != leap_day], leap_day
@@ -783,6 +803,7 @@ def generate_profiles(
         raise ProfileGenerationError(
             "Projection end year must be greater than or equal to start year."
         )
+    validate_base_financial_year_period(base_start_date, base_end_date)
     output_dir = Path(output_dir)
     if not output_dir.exists() or not output_dir.is_dir():
         raise ProfileGenerationError("Output folder does not exist.")
@@ -844,6 +865,7 @@ def generate_profiles(
                 for period in range(1, periods_per_day + 1):
                     writer.writerow(
                         {
+                            "Financial Year": fiscal_year_label(year),
                             "year": projection_date.year,
                             "month": projection_date.month,
                             "day": projection_date.day,

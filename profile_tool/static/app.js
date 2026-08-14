@@ -14,6 +14,16 @@ const ACCENT  = '#3b6ef6';
 const MONTHS  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const DEFAULT_PERIODS = 24;
 const DAYS_PER_YEAR   = 365;
+const {
+  basePeriodForStartYear,
+  bindFinancialYearInput,
+  parseFinancialYear,
+} = FinancialYear;
+const FINANCIAL_YEAR_FIELDS = [
+  ['f-base-year', 'f-base-year-error'],
+  ['f-start-year', 'f-start-year-error'],
+  ['f-end-year', 'f-end-year-error'],
+];
 
 // ── App state ────────────────────────────────────────────────
 const state = {
@@ -32,6 +42,7 @@ let viewMin    = 0,  viewMax  = 1;
 let hoverPos   = null;
 let dragging   = false;
 let dragX, dragMin, dragMax, plot;
+const financialYearBindings = new Map();
 
 // ── Helpers ──────────────────────────────────────────────────
 function nf(v, d = 0) {
@@ -68,11 +79,25 @@ function clampView(mn, mx) {
 function allFilesLoaded() {
   return !!(state.files.base && state.files.peak && state.files.energy);
 }
+function parsedFinancialYears() {
+  const base  = parseFinancialYear(document.getElementById('f-base-year')?.value);
+  const start = parseFinancialYear(document.getElementById('f-start-year')?.value);
+  const end   = parseFinancialYear(document.getElementById('f-end-year')?.value);
+  return { base, start, end, valid: base.valid && start.valid && end.valid };
+}
+function validateFinancialYearFields() {
+  let valid = true;
+  financialYearBindings.forEach(binding => {
+    valid = binding.validate().valid && valid;
+  });
+  const values = parsedFinancialYears();
+  return valid && values.valid ? values : null;
+}
 
 // ── Step navigation ──────────────────────────────────────────
 function goNext() {
   if (state.step === 1 && !allFilesLoaded()) return;
-  if (state.step === 2 && !state.outputFolder) return;
+  if (state.step === 2 && (!state.outputFolder || !validateFinancialYearFields())) return;
   if (state.step < 3) { state.step++; render(); }
 }
 function goBack() {
@@ -83,7 +108,9 @@ function goToStep(n) {
   if (state.hasResults || state.generating) return;
   if (n <= state.step) { state.step = n; render(); return; }
   if (n === 2 && allFilesLoaded())                          { state.step = 2; render(); return; }
-  if (n === 3 && allFilesLoaded() && state.outputFolder)   { state.step = 3; render(); }
+  if (n === 3 && allFilesLoaded() && state.outputFolder && validateFinancialYearFields()) {
+    state.step = 3; render();
+  }
 }
 
 // ── Master render ────────────────────────────────────────────
@@ -162,22 +189,19 @@ function renderButtons() {
   const c2 = document.getElementById('continue-2');
   const b3 = document.getElementById('btn-back-3');
   if (c1) c1.disabled = !allFilesLoaded();
-  if (c2) c2.disabled = !state.outputFolder;
+  if (c2) c2.disabled = !state.outputFolder || !parsedFinancialYears().valid;
   if (b3) b3.disabled = state.generating;
 }
 
 function renderReview() {
   const container = document.getElementById('review-rows');
   if (!container) return;
-  const startYear = document.getElementById('f-start-year')?.value || '?';
-  const endYear   = document.getElementById('f-end-year')?.value   || '?';
-  const baseStart = document.getElementById('f-base-start')?.value || '';
-  const baseEnd   = document.getElementById('f-base-end')?.value   || '';
+  const financialYears = parsedFinancialYears();
   const profile   = document.getElementById('f-profile')?.value    || 'profile';
   const rows = [
     { label: 'Input files',  value: '3 of 3 files ready', style: 'font:700 13px Manrope,sans-serif;color:#0e8f80;' },
-    { label: 'Base period',  value: `${fmtDate(baseStart)} → ${fmtDate(baseEnd)}`, style: 'font:600 13px Manrope,sans-serif;color:#13203a;' },
-    { label: 'Projection',   value: `${fyLabel(startYear)} → ${fyLabel(endYear)} · ${Math.max(0, Number(endYear) - Number(startYear) + 1)} yrs`, style: 'font:600 13px Manrope,sans-serif;color:#13203a;' },
+    { label: 'Base financial year', value: financialYears.base.label, style: 'font:600 13px Manrope,sans-serif;color:#13203a;' },
+    { label: 'Projection', value: `${financialYears.start.label} → ${financialYears.end.label} · ${Math.max(0, financialYears.end.startYear - financialYears.start.startYear + 1)} yrs`, style: 'font:600 13px Manrope,sans-serif;color:#13203a;' },
     { label: 'Output file',  value: `${profile}_projected.csv`, style: "font:600 12.5px 'JetBrains Mono',monospace;color:#42536e;" },
   ];
   container.innerHTML = rows.map(r =>
@@ -206,6 +230,15 @@ function setupFileTiles() {
       const f = e.dataTransfer.files && e.dataTransfer.files[0];
       if (f) { state.files[key] = { name: f.name, file: f }; render(); }
     });
+  });
+}
+
+function setupFinancialYearInputs() {
+  FINANCIAL_YEAR_FIELDS.forEach(([inputId, errorId]) => {
+    const input = document.getElementById(inputId);
+    const error = document.getElementById(errorId);
+    const binding = bindFinancialYearInput(input, error, renderButtons);
+    financialYearBindings.set(inputId, binding);
   });
 }
 
@@ -300,6 +333,9 @@ async function chooseFolder() {
 // ── Generation ───────────────────────────────────────────────
 async function runGenerate() {
   if (state.generating) return;
+  const financialYears = validateFinancialYearFields();
+  if (!financialYears) return;
+  const basePeriod = basePeriodForStartYear(financialYears.base.startYear);
   state.generating = true;
   render();
   document.getElementById('generate-btn-area').hidden = true;
@@ -311,10 +347,10 @@ async function runGenerate() {
     fd.append('base_profile',         state.files.base.file);
     fd.append('peak_projection',      state.files.peak.file);
     fd.append('energy_projection',    state.files.energy.file);
-    fd.append('base_start_date',      document.getElementById('f-base-start').value);
-    fd.append('base_end_date',        document.getElementById('f-base-end').value);
-    fd.append('projection_start_year',document.getElementById('f-start-year').value);
-    fd.append('projection_end_year',  document.getElementById('f-end-year').value);
+    fd.append('base_start_date',      basePeriod.startDate);
+    fd.append('base_end_date',        basePeriod.endDate);
+    fd.append('projection_start_year',financialYears.start.startYear);
+    fd.append('projection_end_year',  financialYears.end.startYear);
     fd.append('profile_name',         document.getElementById('f-profile').value);
     fd.append('output_folder',        state.outputFolder);
 
@@ -668,6 +704,7 @@ function setupChartInteractions() {
 // ── Boot ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   setupFileTiles();
+  setupFinancialYearInputs();
   setupInfoPopovers();
   setupChartInteractions();
   render();

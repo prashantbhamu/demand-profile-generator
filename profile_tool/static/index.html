@@ -56,7 +56,7 @@
             </div>
             <div>
               <div class="step-title" id="step-title-2">Configure</div>
-              <div class="step-sub"   id="step-sub-2">Dates, years &amp; output</div>
+              <div class="step-sub"   id="step-sub-2">Financial years &amp; output</div>
             </div>
           </div>
           <div class="step-item" onclick="goToStep(3)">
@@ -140,24 +140,23 @@
           <div class="step-panel" id="panel-2">
             <div style="font:600 12px 'JetBrains Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#3b6ef6;margin-bottom:9px;">Step 2 — Projection</div>
             <h2 style="font-size:23px;font-weight:800;letter-spacing:-0.02em;margin-bottom:6px;">Configure the run</h2>
-            <p style="color:#5a6a86;font-size:14px;margin-bottom:24px;">Set the base period, the years to project, and where the output CSV should land.</p>
+            <p style="color:#5a6a86;font-size:14px;margin-bottom:24px;">Set the base financial year, projection span, and where the output CSV should land.</p>
 
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-              <div class="field">
-                <label for="f-base-start">Base start date</label>
-                <input type="date" id="f-base-start" value="2024-04-01">
+              <div class="field" style="grid-column:1/-1;">
+                <label for="f-base-year">Base financial year</label>
+                <input type="text" inputmode="numeric" id="f-base-year" value="2024-25" maxlength="7" autocomplete="off" aria-describedby="f-base-year-error">
+                <div class="field-error" id="f-base-year-error" aria-live="polite"></div>
               </div>
               <div class="field">
-                <label for="f-base-end">Base end date</label>
-                <input type="date" id="f-base-end" value="2025-03-31">
+                <label for="f-start-year">Projection start financial year</label>
+                <input type="text" inputmode="numeric" id="f-start-year" value="2025-26" maxlength="7" autocomplete="off" aria-describedby="f-start-year-error">
+                <div class="field-error" id="f-start-year-error" aria-live="polite"></div>
               </div>
               <div class="field">
-                <label for="f-start-year">Projection start year</label>
-                <input type="number" id="f-start-year" value="2025" min="1900" max="2200">
-              </div>
-              <div class="field">
-                <label for="f-end-year">Projection end year</label>
-                <input type="number" id="f-end-year" value="2035" min="1900" max="2200">
+                <label for="f-end-year">Projection end financial year</label>
+                <input type="text" inputmode="numeric" id="f-end-year" value="2035-36" maxlength="7" autocomplete="off" aria-describedby="f-end-year-error">
+                <div class="field-error" id="f-end-year-error" aria-live="polite"></div>
               </div>
               <div class="field" style="grid-column:1/-1;">
                 <label for="f-profile">Profile name</label>
@@ -286,6 +285,7 @@
     </footer>
   </div><!-- /shell -->
 </div><!-- /app-bg -->
+<script src="financial-year.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -1,0 +1,5 @@
+[
+  { "input": "2025", "start_year": 2025, "label": "2025-26" },
+  { "input": "1999-00", "start_year": 1999, "label": "1999-00" },
+  { "input": "2099", "start_year": 2099, "label": "2099-00" }
+]

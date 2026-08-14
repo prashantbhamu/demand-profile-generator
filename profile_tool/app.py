@@ -204,6 +204,11 @@ class ProfileToolHandler(SimpleHTTPRequestHandler):
         if self.path == "/app.js":
             self._serve_static("app.js", "application/javascript; charset=utf-8")
             return
+        if self.path == "/financial-year.js":
+            self._serve_static(
+                "financial-year.js", "application/javascript; charset=utf-8"
+            )
+            return
         if self.path == "/style.css":
             self._serve_static("style.css", "text/css; charset=utf-8")
             return

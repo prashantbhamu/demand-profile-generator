@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const financialYearCases = require('./financial_year_cases.json');
 
 const {
   basePeriodForStartYear,
@@ -60,9 +61,13 @@ test('inconsistent complete financial-year label is rejected', () => {
   });
 });
 
-test('financial-year labels roll over century boundaries', () => {
-  assert.equal(parseFinancialYear('1999-00').label, '1999-00');
-  assert.equal(parseFinancialYear('2099').label, '2099-00');
+test('financial-year labels match shared cross-runtime cases', () => {
+  for (const financialYearCase of financialYearCases) {
+    assert.equal(
+      parseFinancialYear(financialYearCase.input).label,
+      financialYearCase.label
+    );
+  }
 });
 
 test('base period is derived as April through March', () => {

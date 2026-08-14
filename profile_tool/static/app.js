@@ -19,11 +19,11 @@ const {
   bindFinancialYearInput,
   parseFinancialYear,
 } = FinancialYear;
-const FINANCIAL_YEAR_FIELDS = [
-  ['f-base-year', 'f-base-year-error'],
-  ['f-start-year', 'f-start-year-error'],
-  ['f-end-year', 'f-end-year-error'],
-];
+const FINANCIAL_YEAR_FIELDS = {
+  base:  { inputId: 'f-base-year',  errorId: 'f-base-year-error' },
+  start: { inputId: 'f-start-year', errorId: 'f-start-year-error' },
+  end:   { inputId: 'f-end-year',   errorId: 'f-end-year-error' },
+};
 
 // ── App state ────────────────────────────────────────────────
 const state = {
@@ -60,13 +60,6 @@ function shortPath(p) {
   const parts = p.split(/[\\/]/);
   return parts[parts.length - 1] || p;
 }
-function fmtDate(iso) {
-  if (!iso) return '—';
-  const d = new Date(iso + 'T00:00:00');
-  if (isNaN(d)) return iso;
-  return `${String(d.getDate()).padStart(2,'0')} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
-}
-function fyLabel(y) { return `${y}–${String(Number(y) + 1).slice(2)}`; }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function spanV() { return (viewMax - viewMin) || 1; }
 function clampView(mn, mx) {
@@ -80,10 +73,16 @@ function allFilesLoaded() {
   return !!(state.files.base && state.files.peak && state.files.energy);
 }
 function parsedFinancialYears() {
-  const base  = parseFinancialYear(document.getElementById('f-base-year')?.value);
-  const start = parseFinancialYear(document.getElementById('f-start-year')?.value);
-  const end   = parseFinancialYear(document.getElementById('f-end-year')?.value);
-  return { base, start, end, valid: base.valid && start.valid && end.valid };
+  const values = Object.fromEntries(
+    Object.entries(FINANCIAL_YEAR_FIELDS).map(([key, { inputId }]) => [
+      key,
+      parseFinancialYear(document.getElementById(inputId)?.value),
+    ])
+  );
+  return {
+    ...values,
+    valid: Object.values(values).every(value => value.valid),
+  };
 }
 function validateFinancialYearFields() {
   let valid = true;
@@ -234,7 +233,7 @@ function setupFileTiles() {
 }
 
 function setupFinancialYearInputs() {
-  FINANCIAL_YEAR_FIELDS.forEach(([inputId, errorId]) => {
+  Object.values(FINANCIAL_YEAR_FIELDS).forEach(({ inputId, errorId }) => {
     const input = document.getElementById(inputId);
     const error = document.getElementById(errorId);
     const binding = bindFinancialYearInput(input, error, renderButtons);

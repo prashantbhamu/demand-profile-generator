@@ -1,13 +1,29 @@
 import csv
 import datetime as dt
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
-from profile_tool.core import ProfileGenerationError, generate_profiles
+from profile_tool.core import (
+    ProfileGenerationError,
+    fiscal_year_label,
+    generate_profiles,
+)
 
 
 class GenerateProfilesFinancialYearTests(unittest.TestCase):
+    def test_financial_year_labels_match_shared_cross_runtime_cases(self) -> None:
+        cases_path = Path(__file__).with_name("financial_year_cases.json")
+        cases = json.loads(cases_path.read_text(encoding="utf-8"))
+
+        for financial_year_case in cases:
+            with self.subTest(financial_year_case=financial_year_case):
+                self.assertEqual(
+                    fiscal_year_label(financial_year_case["start_year"]),
+                    financial_year_case["label"],
+                )
+
     def _write_inputs(
         self,
         root: Path,

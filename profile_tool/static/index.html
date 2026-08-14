@@ -90,7 +90,7 @@
                     <span>Base profile</span>
                     <span class="info-popover">
                       <span class="info-trigger" role="button" tabindex="0" aria-label="Base profile input format" aria-describedby="help-base" aria-expanded="false">i</span>
-                      <span class="info-balloon" id="help-base" role="tooltip">Upload a CSV or XLSX file. Data is accepted in either structure: Month, Day, Period and Demand columns, or one demand column arranged chronologically. Period represents intervals within a day: 1-24 for hourly, 1-48 for 30-minute, or 1-96 for 15-minute data.</span>
+                      <span class="info-balloon" id="help-base" role="tooltip">Upload a CSV or XLSX file. Data is accepted in either structure: Month, Day, Period and Demand columns, or one demand column arranged chronologically. Period represents intervals within a day: 1-24 for hourly or 1-96 for 15-minute data.</span>
                     </span>
                   </div>
                   <div class="file-name" id="name-base">Drag &amp; drop or click to browse</div>
@@ -129,6 +129,68 @@
                 </div>
                 <div style="font:600 11px 'JetBrains Mono',monospace;color:#9aa7bd;flex:none;" id="action-energy">CSV / XLSX</div>
               </label>
+            </div>
+
+            <div class="rooftop-option" style="margin-top:18px;">
+              <div>
+                <div class="file-title-row">
+                  <span>Rooftop Solar Adjustment</span>
+                  <span class="info-popover">
+                    <span class="info-trigger" role="button" tabindex="0" aria-label="Rooftop adjustment explanation" aria-describedby="help-rooftop-toggle" aria-expanded="false">i</span>
+                    <span class="info-balloon" id="help-rooftop-toggle" role="tooltip">Optionally subtract generation from rooftop capacity added after the reference financial year. Peak and energy inputs remain the before-rooftop counterfactual.</span>
+                  </span>
+                </div>
+                <div class="rooftop-option-sub">Revise projected grid demand using an incremental rooftop trajectory.</div>
+              </div>
+              <label class="switch" aria-label="Enable rooftop solar adjustment">
+                <input type="checkbox" id="rooftop-toggle">
+                <span class="switch-track"></span>
+              </label>
+            </div>
+
+            <div id="rooftop-controls" hidden>
+              <div class="field" style="margin-top:16px;">
+                <label for="rooftop-mode">Rooftop profile mode</label>
+                <select id="rooftop-mode">
+                  <option value="daily">Daily representative profile</option>
+                  <option value="monthly">Monthly representative profiles</option>
+                  <option value="annual">Full annual profile</option>
+                </select>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px;">
+                <label class="file-tile" id="tile-rooftopTrajectory" data-key="rooftopTrajectory">
+                  <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" id="input-rooftopTrajectory" style="position:absolute;width:0;height:0;opacity:0;">
+                  <div class="file-badge" id="badge-rooftopTrajectory">T</div>
+                  <div style="flex:1;min-width:0;">
+                    <div class="file-title-row">
+                      <span>Rooftop capacity trajectory</span>
+                      <span class="info-popover">
+                        <span class="info-trigger" role="button" tabindex="0" aria-label="Rooftop trajectory input format" aria-describedby="help-rooftop-trajectory" aria-expanded="false">i</span>
+                        <span class="info-balloon" id="help-rooftop-trajectory" role="tooltip">Upload CSV or XLSX with Financial Year and Cumulative MW columns. Use YYYY-YY labels, include the reference-FY-end baseline, and provide non-decreasing milestones through the final projection FY.</span>
+                      </span>
+                    </div>
+                    <div class="file-name" id="name-rooftopTrajectory">Drag &amp; drop or click to browse</div>
+                    <div class="rooftop-validation" id="rooftop-trajectory-validation" aria-live="polite"></div>
+                  </div>
+                  <div style="font:600 11px 'JetBrains Mono',monospace;color:#9aa7bd;flex:none;" id="action-rooftopTrajectory">CSV / XLSX</div>
+                </label>
+                <label class="file-tile" id="tile-rooftopProfile" data-key="rooftopProfile">
+                  <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" id="input-rooftopProfile" style="position:absolute;width:0;height:0;opacity:0;">
+                  <div class="file-badge" id="badge-rooftopProfile">R</div>
+                  <div style="flex:1;min-width:0;">
+                    <div class="file-title-row">
+                      <span>Rooftop generation profile</span>
+                      <span class="info-popover">
+                        <span class="info-trigger" role="button" tabindex="0" aria-label="Rooftop profile input format" aria-describedby="help-rooftop-profile" aria-expanded="false">i</span>
+                        <span class="info-balloon" id="help-rooftop-profile" role="tooltip">Rooftop CF must be between 0 and 1. Daily columns: Period, Rooftop CF. Monthly: Month, Period, Rooftop CF. Annual: Month, Day, Period, Rooftop CF. Use exactly 24 or 96 periods/day matching the demand profile.</span>
+                      </span>
+                    </div>
+                    <div class="file-name" id="name-rooftopProfile">Drag &amp; drop or click to browse</div>
+                    <div class="rooftop-validation" id="rooftop-profile-validation" aria-live="polite"></div>
+                  </div>
+                  <div style="font:600 11px 'JetBrains Mono',monospace;color:#9aa7bd;flex:none;" id="action-rooftopProfile">CSV / XLSX</div>
+                </label>
+              </div>
             </div>
 
             <div style="display:flex;justify-content:flex-end;margin-top:28px;">
@@ -235,9 +297,9 @@
             <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:15px;">
               <div>
                 <div class="kicker">Shape comparison</div>
-                <h3 style="font-size:17px;font-weight:700;">Normalized profile view</h3>
+                <h3 style="font-size:17px;font-weight:700;" id="chart-title">Normalized profile view</h3>
               </div>
-              <div style="display:flex;align-items:center;gap:16px;font:600 12px 'Manrope',sans-serif;color:#5a6a86;">
+              <div id="chart-legend" style="display:flex;align-items:center;gap:16px;font:600 12px 'Manrope',sans-serif;color:#5a6a86;">
                 <span style="display:inline-flex;align-items:center;gap:7px;"><span style="width:18px;height:0;border-top:2px dashed #1b2740;display:inline-block;"></span>Mapped base</span>
                 <span style="display:inline-flex;align-items:center;gap:7px;"><span style="width:18px;height:2px;background:#3b6ef6;display:inline-block;border-radius:2px;"></span>Projected</span>
               </div>
@@ -261,7 +323,7 @@
             </div>
             <div style="overflow-x:auto;">
               <table>
-                <thead>
+                <thead id="summary-head">
                   <tr>
                     <th>Financial year</th>
                     <th>Rows</th>

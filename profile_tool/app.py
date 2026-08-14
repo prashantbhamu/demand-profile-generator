@@ -25,8 +25,11 @@ from profile_tool import __version__
 from profile_tool.core import (
     ProfileGenerationError,
     generate_profiles,
+    load_rooftop_profile,
+    load_rooftop_trajectory,
     parse_date,
     summaries_as_dicts,
+    validate_rooftop_trajectory_coverage,
 )
 
 
@@ -225,6 +228,12 @@ class ProfileToolHandler(SimpleHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
     def do_POST(self) -> None:  # noqa: N802
+        if self.path == "/validate-rooftop-profile":
+            self._validate_rooftop_profile()
+            return
+        if self.path == "/validate-rooftop-trajectory":
+            self._validate_rooftop_trajectory()
+            return
         if self.path == "/generate":
             self._generate()
             return
@@ -290,6 +299,67 @@ class ProfileToolHandler(SimpleHTTPRequestHandler):
             )
             return
         self._send_json(result)
+
+    def _validate_rooftop_profile(self) -> None:
+        try:
+            form = self._parse_multipart_form()
+            mode = self._field_text(form, "rooftop_profile_mode")
+            with tempfile.TemporaryDirectory(prefix="demand_projection_tool_") as temp:
+                path = self._save_upload(form, "rooftop_profile", Path(temp))
+                profile = load_rooftop_profile(path, mode)
+        except ProfileGenerationError as exc:
+            self._send_json({"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        except Exception as exc:  # pragma: no cover - defensive UI boundary.
+            self._send_json(
+                {"ok": False, "error": f"Unexpected error: {exc}"},
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+            return
+        self._send_json(
+            {
+                "ok": True,
+                "mode": profile.mode,
+                "periods_per_day": profile.periods_per_day,
+                "row_count": profile.row_count,
+                "template_cuf_percent": profile.template_cuf * 100.0,
+            }
+        )
+
+    def _validate_rooftop_trajectory(self) -> None:
+        try:
+            form = self._parse_multipart_form()
+            base_year = int(self._field_text(form, "base_financial_year"))
+            projection_start_year = int(
+                self._field_text(form, "projection_start_year")
+            )
+            projection_end_year = int(self._field_text(form, "projection_end_year"))
+            with tempfile.TemporaryDirectory(prefix="demand_projection_tool_") as temp:
+                path = self._save_upload(form, "rooftop_trajectory", Path(temp))
+                trajectory = load_rooftop_trajectory(path)
+                validate_rooftop_trajectory_coverage(
+                    trajectory,
+                    base_year,
+                    projection_start_year,
+                    projection_end_year,
+                )
+        except (ProfileGenerationError, ValueError) as exc:
+            self._send_json({"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        except Exception as exc:  # pragma: no cover - defensive UI boundary.
+            self._send_json(
+                {"ok": False, "error": f"Unexpected error: {exc}"},
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+            return
+        self._send_json(
+            {
+                "ok": True,
+                "milestone_count": len(trajectory),
+                "baseline_capacity_mw": trajectory[base_year],
+                "final_capacity_mw": trajectory[max(trajectory)],
+            }
+        )
 
     def _parse_multipart_form(self) -> dict[str, UploadedField]:
         content_type = self.headers.get("Content-Type", "")
@@ -363,6 +433,23 @@ class ProfileToolHandler(SimpleHTTPRequestHandler):
             base_path = self._save_upload(form, "base_profile", temp_dir)
             peak_path = self._save_upload(form, "peak_projection", temp_dir)
             energy_path = self._save_upload(form, "energy_projection", temp_dir)
+            rooftop_enabled = (
+                self._field_text(form, "rooftop_enabled", required=False).lower()
+                == "true"
+            )
+            rooftop_profile_path = None
+            rooftop_trajectory_path = None
+            rooftop_profile_mode = None
+            if rooftop_enabled:
+                rooftop_profile_path = self._save_upload(
+                    form, "rooftop_profile", temp_dir
+                )
+                rooftop_trajectory_path = self._save_upload(
+                    form, "rooftop_trajectory", temp_dir
+                )
+                rooftop_profile_mode = self._field_text(
+                    form, "rooftop_profile_mode"
+                )
 
             result = generate_profiles(
                 base_profile_path=base_path,
@@ -376,6 +463,9 @@ class ProfileToolHandler(SimpleHTTPRequestHandler):
                 projection_end_year=int(self._field_text(form, "projection_end_year")),
                 output_dir=output_dir,
                 profile_name=self._field_text(form, "profile_name", required=False),
+                rooftop_profile_path=rooftop_profile_path,
+                rooftop_trajectory_path=rooftop_trajectory_path,
+                rooftop_profile_mode=rooftop_profile_mode,
             )
 
         return {

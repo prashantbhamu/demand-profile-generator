@@ -22,6 +22,17 @@ OUTPUT_COLUMNS = [
     "period",
     "projected demand",
 ]
+ROOFTOP_OUTPUT_COLUMNS = [
+    "Financial Year",
+    "year",
+    "month",
+    "day",
+    "period",
+    "demand before rooftop",
+    "incremental rooftop capacity",
+    "incremental rooftop generation",
+    "projected demand",
+]
 DATE_FORMATS = ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%y")
 
 
@@ -52,6 +63,27 @@ class YearSummary:
     mapped_base_energy_gwh: float
     peak_growth_rate: float
     low_rank_growth_rate: float
+    rooftop_enabled: bool = False
+    before_rooftop_peak_mw: float | None = None
+    before_rooftop_energy_gwh: float | None = None
+    peak_reduction_mw: float | None = None
+    peak_reduction_percent: float | None = None
+    rooftop_generation_gwh: float | None = None
+    rooftop_template_cuf_percent: float | None = None
+    rooftop_effective_cuf_percent: float | None = None
+    rooftop_year_end_capacity_mw: float | None = None
+    adjusted_minimum_mw: float | None = None
+    adjusted_peak_date: str | None = None
+    adjusted_peak_period: int | None = None
+
+
+@dataclass(frozen=True)
+class RooftopProfile:
+    mode: str
+    periods_per_day: int
+    values: dict[tuple[int, ...], float]
+    template_cuf: float
+    row_count: int
 
 
 @dataclass(frozen=True)
@@ -102,7 +134,7 @@ def _clean_header(header: str | None) -> str:
 
 
 def _normal_header(header: str | None) -> str:
-    return _clean_header(header).lower().replace(" ", "")
+    return re.sub(r"[^a-z0-9]+", "", _clean_header(header).lower())
 
 
 def _as_float(value: str, field_name: str) -> float:
@@ -304,7 +336,7 @@ def _load_sequential_base_profile(
     dates = date_range(base_start, base_end)
     periods_per_day = None
     profile_dates = None
-    for candidate_periods in (96, 48, 24):
+    for candidate_periods in (96, 24):
         try:
             candidate_dates, _ = _profile_dates_with_optional_omitted_leap_day(
                 base_start, base_end, candidate_periods, len(values)
@@ -315,8 +347,18 @@ def _load_sequential_base_profile(
         profile_dates = candidate_dates
         break
     if periods_per_day is None or profile_dates is None:
+        try:
+            _profile_dates_with_optional_omitted_leap_day(
+                base_start, base_end, 48, len(values)
+            )
+        except ProfileGenerationError:
+            pass
+        else:
+            raise ProfileGenerationError(
+                "48-period demand profiles are no longer supported. Use 24 or 96 periods/day."
+            )
         expected = ", ".join(
-            f"{len(dates) * periods:,}" for periods in (24, 48, 96)
+            f"{len(dates) * periods:,}" for periods in (24, 96)
         )
         raise ProfileGenerationError(
             f"{path.name} has {len(values):,} usable rows. Expected one of: {expected}."
@@ -374,10 +416,10 @@ def load_base_profile(
     if not periods_seen:
         raise ProfileGenerationError(f"{path.name} contains no profile rows.")
     periods_per_day = max(periods_seen)
-    if periods_per_day not in (24, 48, 96):
+    if periods_per_day not in (24, 96):
         raise ProfileGenerationError(
             f"Unsupported periods per day: {periods_per_day}. "
-            "Use 24, 48, or 96 period profiles."
+            "Use 24 or 96 period profiles; 48-period profiles are no longer supported."
         )
     expected_periods = set(range(1, periods_per_day + 1))
     if periods_seen != expected_periods:
@@ -426,6 +468,312 @@ def load_targets(path: Path | str, preferred_name: str = "") -> dict[int, float]
     if not targets:
         raise ProfileGenerationError(f"{path.name} contains no target rows.")
     return targets
+
+
+def _find_alias_column(
+    fieldnames: Iterable[str], aliases: Iterable[str], path: Path, label: str
+) -> str:
+    by_normal_name = {_normal_header(name): name for name in fieldnames}
+    for alias in aliases:
+        match = by_normal_name.get(_normal_header(alias))
+        if match:
+            return match
+    raise ProfileGenerationError(
+        f"{path.name} must contain a '{label}' column."
+    )
+
+
+def parse_financial_year_start(value: str) -> int:
+    text = str(value).strip()
+    match = re.fullmatch(r"(\d{4})(?:\s*-\s*(\d{2}|\d{4}))?", text)
+    if not match:
+        raise ProfileGenerationError(
+            f"Could not parse financial year '{value}'. Use YYYY-YY."
+        )
+    start_year = int(match.group(1))
+    suffix = match.group(2)
+    if suffix:
+        expected_year = start_year + 1
+        expected = str(expected_year) if len(suffix) == 4 else str(expected_year % 100).zfill(2)
+        if suffix != expected:
+            raise ProfileGenerationError(
+                f"Financial year '{value}' is inconsistent; expected {fiscal_year_label(start_year)}."
+            )
+    return start_year
+
+
+def load_rooftop_trajectory(path: Path | str) -> dict[int, float]:
+    path = Path(path)
+    fieldnames, rows = _read_tabular_rows(path)
+    year_col = _find_alias_column(
+        fieldnames,
+        ("Financial Year", "FY", "Projection Year", "Year"),
+        path,
+        "Financial Year",
+    )
+    capacity_col = _find_alias_column(
+        fieldnames,
+        (
+            "Cumulative MW",
+            "Cumulative Capacity MW",
+            "Rooftop Capacity MW",
+            "Installed Capacity MW",
+            "Capacity MW",
+        ),
+        path,
+        "Cumulative MW",
+    )
+    trajectory: dict[int, float] = {}
+    for line_number, row in enumerate(rows, start=2):
+        year = parse_financial_year_start(row.get(year_col, ""))
+        capacity = _as_float(
+            row.get(capacity_col, ""), f"{path.name} line {line_number} {capacity_col}"
+        )
+        if not math.isfinite(capacity):
+            raise ProfileGenerationError(
+                f"{path.name} line {line_number} cumulative capacity must be finite."
+            )
+        if capacity < 0:
+            raise ProfileGenerationError(
+                f"{path.name} line {line_number} cumulative capacity cannot be negative."
+            )
+        if year in trajectory:
+            raise ProfileGenerationError(
+                f"{path.name} contains duplicate financial year {fiscal_year_label(year)}."
+            )
+        trajectory[year] = capacity
+
+    if not trajectory:
+        raise ProfileGenerationError(f"{path.name} contains no rooftop trajectory rows.")
+    previous_capacity: float | None = None
+    for year in sorted(trajectory):
+        capacity = trajectory[year]
+        if previous_capacity is not None and capacity < previous_capacity:
+            raise ProfileGenerationError(
+                f"{path.name} cumulative capacity must be non-decreasing; "
+                f"{fiscal_year_label(year)} is lower than the preceding milestone."
+            )
+        previous_capacity = capacity
+    return trajectory
+
+
+def validate_rooftop_trajectory_coverage(
+    trajectory: dict[int, float],
+    base_financial_year: int,
+    projection_start_year: int,
+    projection_end_year: int,
+) -> None:
+    if projection_start_year <= base_financial_year:
+        raise ProfileGenerationError(
+            "Rooftop-adjusted projections must begin after the reference financial year, "
+            "because the rooftop baseline is measured at that financial-year end."
+        )
+    if base_financial_year not in trajectory:
+        raise ProfileGenerationError(
+            "Rooftop trajectory must include the reference financial-year-end "
+            f"baseline for {fiscal_year_label(base_financial_year)}."
+        )
+    first_year = min(trajectory)
+    last_year = max(trajectory)
+    if first_year > base_financial_year or projection_start_year < base_financial_year:
+        raise ProfileGenerationError("Rooftop trajectory does not cover the projection start.")
+    if last_year < projection_end_year:
+        raise ProfileGenerationError(
+            "Rooftop trajectory must include a milestone covering the final projection "
+            f"financial year {fiscal_year_label(projection_end_year)}; extrapolation is not allowed."
+        )
+
+
+def _profile_period_count(periods_seen: set[int], path: Path) -> int:
+    if not periods_seen:
+        raise ProfileGenerationError(f"{path.name} contains no rooftop profile rows.")
+    periods_per_day = max(periods_seen)
+    if periods_per_day not in (24, 96):
+        raise ProfileGenerationError(
+            f"Unsupported rooftop periods per day: {periods_per_day}. Use 24 or 96."
+        )
+    if periods_seen != set(range(1, periods_per_day + 1)):
+        raise ProfileGenerationError(
+            f"{path.name} Period values must be consecutive from 1 to {periods_per_day}."
+        )
+    return periods_per_day
+
+
+def load_rooftop_profile(path: Path | str, mode: str) -> RooftopProfile:
+    path = Path(path)
+    mode = str(mode).strip().lower()
+    if mode not in {"daily", "monthly", "annual"}:
+        raise ProfileGenerationError("Rooftop profile mode must be Daily, Monthly, or Annual.")
+
+    fieldnames, rows = _read_tabular_rows(path)
+    period_col = _find_alias_column(
+        fieldnames, ("Period", "Time Block", "Block"), path, "Period"
+    )
+    cf_col = _find_alias_column(
+        fieldnames,
+        (
+            "Rooftop CF",
+            "CF",
+            "Capacity Factor",
+            "PU",
+            "Per Unit",
+            "Normalized Generation",
+        ),
+        path,
+        "Rooftop CF",
+    )
+    month_col = None
+    day_col = None
+    if mode in {"monthly", "annual"}:
+        month_col = _find_alias_column(fieldnames, ("Month",), path, "Month")
+    if mode == "annual":
+        day_col = _find_alias_column(fieldnames, ("Day",), path, "Day")
+
+    values: dict[tuple[int, ...], float] = {}
+    periods_seen: set[int] = set()
+    for line_number, row in enumerate(rows, start=2):
+        period = _as_int(
+            row.get(period_col, ""), f"{path.name} line {line_number} Period"
+        )
+        cf = _as_float(row.get(cf_col, ""), f"{path.name} line {line_number} {cf_col}")
+        if not 0 <= cf <= 1:
+            raise ProfileGenerationError(
+                f"{path.name} line {line_number} Rooftop CF must be between 0 and 1."
+            )
+        if mode == "daily":
+            key = (period,)
+        else:
+            month = _as_int(
+                row.get(month_col, ""), f"{path.name} line {line_number} Month"
+            )
+            if not 1 <= month <= 12:
+                raise ProfileGenerationError(
+                    f"{path.name} line {line_number} Month must be between 1 and 12."
+                )
+            if mode == "monthly":
+                key = (month, period)
+            else:
+                day = _as_int(
+                    row.get(day_col, ""), f"{path.name} line {line_number} Day"
+                )
+                try:
+                    dt.date(2024 if month == 2 and day == 29 else 2023, month, day)
+                except ValueError as exc:
+                    raise ProfileGenerationError(
+                        f"{path.name} line {line_number} has invalid Month/Day {month}/{day}."
+                    ) from exc
+                key = (month, day, period)
+        if key in values:
+            raise ProfileGenerationError(
+                f"{path.name} contains duplicate rooftop profile row {key}."
+            )
+        values[key] = cf
+        periods_seen.add(period)
+
+    periods_per_day = _profile_period_count(periods_seen, path)
+    if mode == "daily":
+        expected = {(period,) for period in range(1, periods_per_day + 1)}
+        allowed_expected = (expected,)
+    elif mode == "monthly":
+        expected = {
+            (month, period)
+            for month in range(1, 13)
+            for period in range(1, periods_per_day + 1)
+        }
+        allowed_expected = (expected,)
+    else:
+        allowed_expected = tuple(
+            {
+                (date_value.month, date_value.day, period)
+                for date_value in date_range(dt.date(year, 1, 1), dt.date(year, 12, 31))
+                for period in range(1, periods_per_day + 1)
+            }
+            for year in (2023, 2024)
+        )
+    if not any(set(values) == expected_keys for expected_keys in allowed_expected):
+        closest = min(allowed_expected, key=lambda keys: len(set(values) ^ keys))
+        missing = sorted(closest - set(values))
+        extra = sorted(set(values) - closest)
+        details = []
+        if missing:
+            details.append(f"missing {', '.join(map(str, missing[:5]))}")
+        if extra:
+            details.append(f"unexpected {', '.join(map(str, extra[:5]))}")
+        raise ProfileGenerationError(
+            f"{path.name} does not contain a complete {mode} rooftop profile: "
+            + "; ".join(details)
+            + "."
+        )
+
+    return RooftopProfile(
+        mode=mode,
+        periods_per_day=periods_per_day,
+        values=values,
+        template_cuf=sum(values.values()) / len(values),
+        row_count=len(values),
+    )
+
+
+def expand_rooftop_profile(
+    profile: RooftopProfile, projection_dates: list[dt.date]
+) -> list[float]:
+    expanded: list[float] = []
+    for date_value in projection_dates:
+        for period in range(1, profile.periods_per_day + 1):
+            if profile.mode == "daily":
+                value = profile.values[(period,)]
+            elif profile.mode == "monthly":
+                value = profile.values[(date_value.month, period)]
+            else:
+                key = (date_value.month, date_value.day, period)
+                if key in profile.values:
+                    value = profile.values[key]
+                elif date_value.month == 2 and date_value.day == 29:
+                    value = (
+                        profile.values[(2, 28, period)]
+                        + profile.values[(3, 1, period)]
+                    ) / 2.0
+                else:
+                    raise ProfileGenerationError(
+                        f"Annual rooftop profile is missing {key}."
+                    )
+            expanded.append(value)
+    return expanded
+
+
+def _trajectory_milestones(
+    trajectory: dict[int, float],
+) -> list[tuple[dt.datetime, float]]:
+    return [
+        (dt.datetime(year + 1, 4, 1), trajectory[year])
+        for year in sorted(trajectory)
+    ]
+
+
+def interpolate_rooftop_capacity(
+    trajectory: dict[int, float], timestamp: dt.datetime
+) -> float:
+    return _interpolate_rooftop_milestones(_trajectory_milestones(trajectory), timestamp)
+
+
+def _interpolate_rooftop_milestones(
+    milestones: list[tuple[dt.datetime, float]], timestamp: dt.datetime
+) -> float:
+    if timestamp < milestones[0][0] or timestamp > milestones[-1][0]:
+        raise ProfileGenerationError(
+            "Rooftop trajectory does not cover all projection intervals; extrapolation is not allowed."
+        )
+    for index, (right_time, right_capacity) in enumerate(milestones):
+        if timestamp == right_time or index == 0:
+            if timestamp == right_time:
+                return right_capacity
+            continue
+        left_time, left_capacity = milestones[index - 1]
+        if left_time <= timestamp <= right_time:
+            elapsed = (timestamp - left_time).total_seconds()
+            span = (right_time - left_time).total_seconds()
+            return left_capacity + (right_capacity - left_capacity) * elapsed / span
+    raise ProfileGenerationError("Could not interpolate rooftop capacity.")
 
 
 def _replace_year(month: int, day: int, year: int) -> dt.date:
@@ -798,6 +1146,9 @@ def generate_profiles(
     projection_end_year: int,
     output_dir: Path | str,
     profile_name: str = "",
+    rooftop_profile_path: Path | str | None = None,
+    rooftop_trajectory_path: Path | str | None = None,
+    rooftop_profile_mode: str | None = None,
 ) -> GenerationResult:
     if projection_end_year < projection_start_year:
         raise ProfileGenerationError(
@@ -819,29 +1170,65 @@ def generate_profiles(
     profile_slug = sanitize_name(profile_name)
     peak_targets = load_targets(peak_projection_path, preferred_name=profile_name)
     energy_targets = load_targets(energy_projection_path, preferred_name=profile_name)
-    filename = (
-        f"{profile_slug}_projected_demand_"
-        f"{projection_start_year}_{projection_end_year}.csv"
+    rooftop_args = (
+        rooftop_profile_path,
+        rooftop_trajectory_path,
+        rooftop_profile_mode,
     )
+    rooftop_enabled = any(value is not None and value != "" for value in rooftop_args)
+    if rooftop_enabled and not all(value is not None and value != "" for value in rooftop_args):
+        raise ProfileGenerationError(
+            "Rooftop mode requires a profile, trajectory, and profile mode."
+        )
+
+    rooftop_profile = None
+    rooftop_trajectory = None
+    rooftop_milestones = None
+    baseline_rooftop_capacity = None
+    if rooftop_enabled:
+        rooftop_profile = load_rooftop_profile(
+            rooftop_profile_path, str(rooftop_profile_mode)
+        )
+        if rooftop_profile.periods_per_day != periods_per_day:
+            raise ProfileGenerationError(
+                "Rooftop profile resolution must exactly match the demand profile "
+                f"({rooftop_profile.periods_per_day} versus {periods_per_day} periods/day)."
+            )
+        rooftop_trajectory = load_rooftop_trajectory(rooftop_trajectory_path)
+        validate_rooftop_trajectory_coverage(
+            rooftop_trajectory,
+            base_start_date.year,
+            projection_start_year,
+            projection_end_year,
+        )
+        baseline_rooftop_capacity = rooftop_trajectory[base_start_date.year]
+        rooftop_milestones = _trajectory_milestones(rooftop_trajectory)
+
+    for year in range(projection_start_year, projection_end_year + 1):
+        if year not in peak_targets:
+            raise ProfileGenerationError(f"Peak projection is missing target year {year}.")
+        if year not in energy_targets:
+            raise ProfileGenerationError(f"Energy projection is missing target year {year}.")
+
+    if rooftop_enabled:
+        filename = f"{profile_slug}_rooftop_adjusted.csv"
+        output_columns = ROOFTOP_OUTPUT_COLUMNS
+    else:
+        filename = (
+            f"{profile_slug}_projected_demand_"
+            f"{projection_start_year}_{projection_end_year}.csv"
+        )
+        output_columns = OUTPUT_COLUMNS
     output_path = unique_output_path(output_dir, filename)
 
     summaries = []
     graph_series = []
     rows_written = 0
     with output_path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=OUTPUT_COLUMNS)
+        writer = csv.DictWriter(handle, fieldnames=output_columns)
         writer.writeheader()
 
         for year in range(projection_start_year, projection_end_year + 1):
-            if year not in peak_targets:
-                raise ProfileGenerationError(
-                    f"Peak projection is missing target year {year}."
-                )
-            if year not in energy_targets:
-                raise ProfileGenerationError(
-                    f"Energy projection is missing target year {year}."
-                )
-
             projection_dates = projection_dates_for_year(
                 base_start_date, base_end_date, year
             )
@@ -858,22 +1245,106 @@ def generate_profiles(
                 mapped_values, peak_targets[year], energy_targets[year], periods_per_day
             )
 
+            adjusted_values: list[float] | None = None
+            rooftop_generation: list[float] | None = None
+            incremental_capacities: list[float] | None = None
+            effective_cuf: float | None = None
+            if rooftop_enabled:
+                assert rooftop_profile is not None
+                assert rooftop_trajectory is not None
+                assert rooftop_milestones is not None
+                assert baseline_rooftop_capacity is not None
+                rooftop_cf_values = expand_rooftop_profile(
+                    rooftop_profile, projection_dates
+                )
+                incremental_capacities = []
+                rooftop_generation = []
+                for index, projection_date in enumerate(projection_dates):
+                    for period_index in range(periods_per_day):
+                        timestamp = dt.datetime.combine(
+                            projection_date, dt.time()
+                        ) + dt.timedelta(hours=period_index * interval_hours)
+                        total_capacity = _interpolate_rooftop_milestones(
+                            rooftop_milestones, timestamp
+                        )
+                        incremental_capacity = total_capacity - baseline_rooftop_capacity
+                        if incremental_capacity < -1e-9:
+                            raise ProfileGenerationError(
+                                "Interpolated rooftop capacity falls below the reference baseline."
+                            )
+                        incremental_capacity = max(0.0, incremental_capacity)
+                        value_index = index * periods_per_day + period_index
+                        incremental_capacities.append(incremental_capacity)
+                        rooftop_generation.append(
+                            incremental_capacity * rooftop_cf_values[value_index]
+                        )
+                adjusted_values = [
+                    float(before) - generation
+                    for before, generation in zip(projected, rooftop_generation)
+                ]
+                available_capacity_hours = (
+                    sum(incremental_capacities) * interval_hours
+                )
+                if available_capacity_hours > 0:
+                    effective_cuf = (
+                        sum(rooftop_generation) * interval_hours
+                        / available_capacity_hours
+                    )
+
             index = 0
             for projection_date, mapped_day in zip(projection_dates, mapped_days):
                 if len(mapped_day.values) != periods_per_day:
                     raise ProfileGenerationError("Internal period-count mismatch.")
                 for period in range(1, periods_per_day + 1):
-                    writer.writerow(
-                        {
-                            "Financial Year": fiscal_year_label(year),
-                            "year": projection_date.year,
-                            "month": projection_date.month,
-                            "day": projection_date.day,
-                            "period": period,
-                            "projected demand": projected[index],
-                        }
-                    )
+                    if rooftop_enabled:
+                        assert adjusted_values is not None
+                        assert rooftop_generation is not None
+                        assert incremental_capacities is not None
+                        writer.writerow(
+                            {
+                                "Financial Year": fiscal_year_label(year),
+                                "year": projection_date.year,
+                                "month": projection_date.month,
+                                "day": projection_date.day,
+                                "period": period,
+                                "demand before rooftop": f"{projected[index]:.3f}",
+                                "incremental rooftop capacity": f"{incremental_capacities[index]:.3f}",
+                                "incremental rooftop generation": f"{rooftop_generation[index]:.3f}",
+                                "projected demand": f"{adjusted_values[index]:.3f}",
+                            }
+                        )
+                    else:
+                        writer.writerow(
+                            {
+                                "Financial Year": fiscal_year_label(year),
+                                "year": projection_date.year,
+                                "month": projection_date.month,
+                                "day": projection_date.day,
+                                "period": period,
+                                "projected demand": projected[index],
+                            }
+                        )
                     index += 1
+
+            final_values = adjusted_values if adjusted_values is not None else projected
+            before_peak = float(max(projected))
+            final_peak = float(max(final_values))
+            final_energy = sum(final_values) * interval_hours / 1000.0
+            rooftop_generation_gwh = (
+                None
+                if rooftop_generation is None
+                else sum(rooftop_generation) * interval_hours / 1000.0
+            )
+            peak_index = max(range(len(final_values)), key=final_values.__getitem__)
+            peak_date = projection_dates[peak_index // periods_per_day]
+            peak_period = peak_index % periods_per_day + 1
+            year_end_capacity = (
+                None
+                if rooftop_trajectory is None
+                else _interpolate_rooftop_milestones(
+                    rooftop_milestones, dt.datetime(year + 1, 4, 1)
+                )
+            )
 
             summaries.append(
                 YearSummary(
@@ -885,42 +1356,96 @@ def generate_profiles(
                     base_profile_energy_gwh=base_profile_energy,
                     base_profile_is_normalized=base_profile_is_normalized,
                     target_peak_mw=peak_targets[year],
-                    achieved_peak_mw=float(max(projected)),
+                    achieved_peak_mw=final_peak,
                     target_energy_gwh=energy_targets[year],
-                    achieved_energy_gwh=sum(projected) * interval_hours / 1000.0,
+                    achieved_energy_gwh=final_energy,
                     mapped_base_peak_mw=float(max(mapped_values)),
                     mapped_base_energy_gwh=sum(mapped_values) * interval_hours / 1000.0,
                     peak_growth_rate=peak_growth,
                     low_rank_growth_rate=low_rank_growth,
+                    rooftop_enabled=rooftop_enabled,
+                    before_rooftop_peak_mw=before_peak if rooftop_enabled else None,
+                    before_rooftop_energy_gwh=(
+                        sum(projected) * interval_hours / 1000.0
+                        if rooftop_enabled
+                        else None
+                    ),
+                    peak_reduction_mw=(
+                        before_peak - final_peak if rooftop_enabled else None
+                    ),
+                    peak_reduction_percent=(
+                        (before_peak - final_peak) / before_peak * 100.0
+                        if rooftop_enabled and before_peak
+                        else None
+                    ),
+                    rooftop_generation_gwh=rooftop_generation_gwh,
+                    rooftop_template_cuf_percent=(
+                        rooftop_profile.template_cuf * 100.0
+                        if rooftop_profile is not None
+                        else None
+                    ),
+                    rooftop_effective_cuf_percent=(
+                        effective_cuf * 100.0 if effective_cuf is not None else None
+                    ),
+                    rooftop_year_end_capacity_mw=year_end_capacity,
+                    adjusted_minimum_mw=(
+                        float(min(final_values)) if rooftop_enabled else None
+                    ),
+                    adjusted_peak_date=(peak_date.isoformat() if rooftop_enabled else None),
+                    adjusted_peak_period=(peak_period if rooftop_enabled else None),
                 )
             )
-            graph_series.append(
-                {
-                    "id": f"year-{year}",
-                    "label": str(year),
-                    "year": year,
-                    "start_date": projection_dates[0].isoformat(),
-                    "end_date": projection_dates[-1].isoformat(),
-                    "day_count": len(projection_dates),
-                    "periods_per_day": periods_per_day,
-                    "mapped_base": {
-                        "label": "Mapped base",
-                        "points": _normalize_for_graph(
-                            mapped_values, f"Mapped base {year}"
-                        ),
-                    },
-                    "projected": {
-                        "label": "Projected",
-                        "points": _normalize_for_graph(
-                            projected, f"Projection {year}"
-                        ),
-                    },
-                }
-            )
+            graph_year = {
+                "id": f"year-{year}",
+                "label": fiscal_year_label(year),
+                "year": year,
+                "start_date": projection_dates[0].isoformat(),
+                "end_date": projection_dates[-1].isoformat(),
+                "day_count": len(projection_dates),
+                "periods_per_day": periods_per_day,
+            }
+            if rooftop_enabled:
+                assert adjusted_values is not None
+                assert rooftop_generation is not None
+                graph_year.update(
+                    {
+                        "before_rooftop": {
+                            "label": "Before rooftop",
+                            "points": projected,
+                        },
+                        "adjusted": {
+                            "label": "Adjusted grid demand",
+                            "points": adjusted_values,
+                        },
+                        "rooftop_generation": {
+                            "label": "Rooftop generation",
+                            "points": rooftop_generation,
+                        },
+                    }
+                )
+            else:
+                graph_year.update(
+                    {
+                        "mapped_base": {
+                            "label": "Mapped base",
+                            "points": _normalize_for_graph(
+                                mapped_values, f"Mapped base {year}"
+                            ),
+                        },
+                        "projected": {
+                            "label": "Projected",
+                            "points": _normalize_for_graph(
+                                projected, f"Projection {year}"
+                            ),
+                        },
+                    }
+                )
+            graph_series.append(graph_year)
             rows_written += len(projected)
 
     graph = {
-        "normalization": "series_peak",
+        "normalization": "absolute_mw" if rooftop_enabled else "series_peak",
+        "rooftop_enabled": rooftop_enabled,
         "periods_per_day": periods_per_day,
         "years": graph_series,
     }
@@ -980,6 +1505,18 @@ def summaries_as_dicts(
                     else _growth_percent(item.target_energy_gwh, previous_energy)
                 ),
                 "low_rank_growth_rate": item.low_rank_growth_rate,
+                "rooftop_enabled": item.rooftop_enabled,
+                "before_rooftop_peak_mw": item.before_rooftop_peak_mw,
+                "before_rooftop_energy_gwh": item.before_rooftop_energy_gwh,
+                "peak_reduction_mw": item.peak_reduction_mw,
+                "peak_reduction_percent": item.peak_reduction_percent,
+                "rooftop_generation_gwh": item.rooftop_generation_gwh,
+                "rooftop_template_cuf_percent": item.rooftop_template_cuf_percent,
+                "rooftop_effective_cuf_percent": item.rooftop_effective_cuf_percent,
+                "rooftop_year_end_capacity_mw": item.rooftop_year_end_capacity_mw,
+                "adjusted_minimum_mw": item.adjusted_minimum_mw,
+                "adjusted_peak_date": item.adjusted_peak_date,
+                "adjusted_peak_period": item.adjusted_peak_period,
             }
         )
     return rows

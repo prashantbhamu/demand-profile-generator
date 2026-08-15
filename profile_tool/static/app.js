@@ -154,7 +154,7 @@ function parsedFinancialYears() {
 function validateFinancialYearFields() {
   let valid = true;
   financialYearBindings.forEach(binding => {
-    valid = binding.validate().valid && valid;
+    valid = binding.validate(false).valid && valid;
   });
   const values = parsedFinancialYears();
   return valid && values.valid ? values : null;

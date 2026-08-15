@@ -212,6 +212,22 @@ class ProfileToolHandler(SimpleHTTPRequestHandler):
                 "financial-year.js", "application/javascript; charset=utf-8"
             )
             return
+        if self.path == "/prism-brand.js":
+            self._serve_static(
+                "prism-brand.js", "application/javascript; charset=utf-8"
+            )
+            return
+        if self.path == "/prism-logo.svg":
+            self._serve_static("prism-logo.svg", "image/svg+xml; charset=utf-8")
+            return
+        if self.path == "/fonts/RussoOne-Regular.ttf":
+            self._serve_static("fonts/RussoOne-Regular.ttf", "font/ttf")
+            return
+        if self.path == "/fonts/OFL-RussoOne.txt":
+            self._serve_static(
+                "fonts/OFL-RussoOne.txt", "text/plain; charset=utf-8"
+            )
+            return
         if self.path == "/style.css":
             self._serve_static("style.css", "text/css; charset=utf-8")
             return

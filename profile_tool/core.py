@@ -20,6 +20,7 @@ OUTPUT_COLUMNS = [
     "month",
     "day",
     "period",
+    "Period classification",
     "projected demand",
 ]
 ROOFTOP_OUTPUT_COLUMNS = [
@@ -28,6 +29,7 @@ ROOFTOP_OUTPUT_COLUMNS = [
     "month",
     "day",
     "period",
+    "Period classification",
     "demand before rooftop",
     "incremental rooftop capacity",
     "incremental rooftop generation",
@@ -77,6 +79,44 @@ class YearSummary:
     unadjusted_peak_period: int | None = None
     adjusted_peak_date: str | None = None
     adjusted_peak_period: int | None = None
+    solar_peak_mw: float = 0.0
+    solar_peak_date: str = ""
+    solar_peak_period: int = 0
+    non_solar_peak_mw: float = 0.0
+    non_solar_peak_date: str = ""
+    non_solar_peak_period: int = 0
+    before_rooftop_solar_peak_mw: float | None = None
+    before_rooftop_solar_peak_date: str | None = None
+    before_rooftop_solar_peak_period: int | None = None
+    before_rooftop_non_solar_peak_mw: float | None = None
+    before_rooftop_non_solar_peak_date: str | None = None
+    before_rooftop_non_solar_peak_period: int | None = None
+    solar_peak_reduction_mw: float | None = None
+    solar_peak_reduction_percent: float | None = None
+    non_solar_peak_reduction_mw: float | None = None
+    non_solar_peak_reduction_percent: float | None = None
+
+
+@dataclass(frozen=True)
+class BaseProfileInspection:
+    row_count: int
+    day_count: int
+    periods_per_day: int
+    value_column: str
+    is_normalized: bool
+
+
+@dataclass(frozen=True)
+class TargetInspection:
+    targets: dict[int, float]
+    value_column: str
+
+
+@dataclass(frozen=True)
+class PeakObservation:
+    magnitude_mw: float
+    date: str
+    period: int
 
 
 @dataclass(frozen=True)
@@ -144,11 +184,14 @@ def _as_float(value: str, field_name: str) -> float:
     if not text:
         raise ProfileGenerationError(f"Missing numeric value in {field_name}.")
     try:
-        return float(text)
+        number = float(text)
     except ValueError as exc:
         raise ProfileGenerationError(
             f"Could not parse numeric value '{value}' in {field_name}."
         ) from exc
+    if not math.isfinite(number):
+        raise ProfileGenerationError(f"{field_name} must be finite numeric value.")
+    return number
 
 
 def _as_int(value: str, field_name: str) -> int:
@@ -245,6 +288,31 @@ def _find_required_column(fieldnames: Iterable[str], wanted: str, path: Path) ->
         if _normal_header(name) == wanted.lower():
             return name
     raise ProfileGenerationError(f"{path.name} must contain a '{wanted}' column.")
+
+
+def _base_profile_calendar_columns(
+    fieldnames: Iterable[str], path: Path
+) -> tuple[str, str, str] | None:
+    matches = {
+        wanted: next(
+            (
+                name
+                for name in fieldnames
+                if _normal_header(name) == wanted.lower()
+            ),
+            None,
+        )
+        for wanted in ("Month", "Day", "Period")
+    }
+    present = [wanted for wanted, name in matches.items() if name is not None]
+    if present and len(present) != len(matches):
+        missing = [wanted for wanted, name in matches.items() if name is None]
+        raise ProfileGenerationError(
+            f"{path.name} uses calendar columns but is missing: {', '.join(missing)}."
+        )
+    if not present:
+        return None
+    return matches["Month"], matches["Day"], matches["Period"]  # type: ignore[return-value]
 
 
 def _find_value_column(
@@ -382,12 +450,10 @@ def load_base_profile(
 ) -> tuple[list[BaseDay], int, str]:
     path = Path(path)
     fieldnames, rows = _read_tabular_rows(path)
-    try:
-        month_col = _find_required_column(fieldnames, "Month", path)
-        day_col = _find_required_column(fieldnames, "Day", path)
-        period_col = _find_required_column(fieldnames, "Period", path)
-    except ProfileGenerationError:
+    calendar_columns = _base_profile_calendar_columns(fieldnames, path)
+    if calendar_columns is None:
         return _load_sequential_base_profile(path, fieldnames, rows, base_start, base_end)
+    month_col, day_col, period_col = calendar_columns
 
     value_col = _find_value_column(
         fieldnames, rows, {month_col, day_col, period_col}, path
@@ -455,21 +521,85 @@ def load_base_profile(
     return base_days, periods_per_day, value_col
 
 
-def load_targets(path: Path | str, preferred_name: str = "") -> dict[int, float]:
+def inspect_base_profile(path: Path | str) -> BaseProfileInspection:
+    """Validate a base profile without assuming a particular financial year."""
+
+    path = Path(path)
+    fieldnames, rows = _read_tabular_rows(path)
+    calendar_columns = _base_profile_calendar_columns(fieldnames, path)
+    excluded = set(calendar_columns or ())
+    value_col = _find_value_column(fieldnames, rows, excluded, path)
+    values: list[float] = []
+    for line_number, row in enumerate(rows, start=2):
+        raw_value = row.get(value_col, "")
+        if not str(raw_value).strip():
+            continue
+        values.append(
+            _as_float(raw_value, f"{path.name} line {line_number} {value_col}")
+        )
+    if not values:
+        raise ProfileGenerationError(f"{path.name} contains no profile values.")
+    candidates = [
+        (periods, len(values) // periods)
+        for periods in (24, 96)
+        if len(values) % periods == 0 and len(values) // periods in (365, 366)
+    ]
+    if not candidates:
+        if len(values) % 48 == 0 and len(values) // 48 in (365, 366):
+            raise ProfileGenerationError(
+                "48-period demand profiles are no longer supported. Use 24 or 96 periods/day."
+            )
+        raise ProfileGenerationError(
+            f"{path.name} has {len(values):,} usable rows. Expected a complete "
+            "365- or 366-day profile with 24 or 96 periods/day."
+        )
+    _, inferred_day_count = candidates[0]
+    reference_start = dt.date(2023 if inferred_day_count == 366 else 2024, 4, 1)
+    reference_end = dt.date(reference_start.year + 1, 3, 31)
+    base_days, periods_per_day, value_col = load_base_profile(
+        path, reference_start, reference_end
+    )
+    parsed_values = [value for base_day in base_days for value in base_day.values]
+    return BaseProfileInspection(
+        row_count=len(parsed_values),
+        day_count=len(base_days),
+        periods_per_day=periods_per_day,
+        value_column=value_col,
+        is_normalized=_profile_looks_normalized(parsed_values),
+    )
+
+
+def inspect_targets(
+    path: Path | str, preferred_name: str = ""
+) -> TargetInspection:
     path = Path(path)
     fieldnames, rows = _read_tabular_rows(path)
     date_col = _find_required_column(fieldnames, "DateTime", path)
     value_col = _find_value_column(
         fieldnames, rows, {date_col}, path, preferred_name=preferred_name
     )
-    targets = {}
+    targets: dict[int, float] = {}
     for line_number, row in enumerate(rows, start=2):
         date_value = parse_date(row.get(date_col, ""))
-        value = _as_float(row.get(value_col, ""), f"{path.name} line {line_number}")
+        value = _as_float(
+            row.get(value_col, ""), f"{path.name} line {line_number} {value_col}"
+        )
+        if value <= 0:
+            raise ProfileGenerationError(
+                f"{path.name} line {line_number} {value_col} must be positive."
+            )
+        if date_value.year in targets:
+            raise ProfileGenerationError(
+                f"{path.name} contains duplicate target year {date_value.year}."
+            )
         targets[date_value.year] = value
     if not targets:
         raise ProfileGenerationError(f"{path.name} contains no target rows.")
-    return targets
+    return TargetInspection(targets=targets, value_column=value_col)
+
+
+def load_targets(path: Path | str, preferred_name: str = "") -> dict[int, float]:
+    return inspect_targets(path, preferred_name=preferred_name).targets
 
 
 def _find_alias_column(
@@ -1132,6 +1262,67 @@ def _profile_looks_normalized(values: list[float]) -> bool:
     return min(values) >= 0 and max(values) <= 1.05
 
 
+def validate_solar_window(
+    start_minutes: int, end_minutes: int, periods_per_day: int
+) -> None:
+    if periods_per_day not in (24, 96):
+        raise ProfileGenerationError("Solar-window validation requires 24 or 96 periods/day.")
+    if not 0 <= start_minutes < end_minutes <= 1440:
+        raise ProfileGenerationError(
+            "Solar period must be a same-day window with start before end."
+        )
+    interval_minutes = 1440 // periods_per_day
+    if start_minutes % interval_minutes or end_minutes % interval_minutes:
+        raise ProfileGenerationError(
+            f"Solar-period boundaries must align to {interval_minutes}-minute intervals."
+        )
+    solar_periods = (end_minutes - start_minutes) // interval_minutes
+    if solar_periods <= 0 or solar_periods >= periods_per_day:
+        raise ProfileGenerationError(
+            "Solar and non-solar periods must each contain at least one interval."
+        )
+
+
+def period_classification(
+    period: int,
+    periods_per_day: int,
+    solar_start_minutes: int,
+    solar_end_minutes: int,
+) -> str:
+    interval_minutes = 1440 // periods_per_day
+    interval_start = (period - 1) * interval_minutes
+    return (
+        "Solar"
+        if solar_start_minutes <= interval_start < solar_end_minutes
+        else "Non-solar"
+    )
+
+
+def _classified_peak(
+    values: list[float] | list[int],
+    projection_dates: list[dt.date],
+    periods_per_day: int,
+    solar_start_minutes: int,
+    solar_end_minutes: int,
+    classification: str,
+) -> PeakObservation:
+    matching_indices = [
+        index
+        for index in range(len(values))
+        if period_classification(
+            index % periods_per_day + 1,
+            periods_per_day,
+            solar_start_minutes,
+            solar_end_minutes,
+        )
+        == classification
+    ]
+    peak_index = max(matching_indices, key=values.__getitem__)
+    peak_date = projection_dates[peak_index // periods_per_day]
+    peak_period = peak_index % periods_per_day + 1
+    return PeakObservation(float(values[peak_index]), peak_date.isoformat(), peak_period)
+
+
 def generate_profiles(
     base_profile_path: Path | str,
     peak_projection_path: Path | str,
@@ -1145,6 +1336,8 @@ def generate_profiles(
     rooftop_profile_path: Path | str | None = None,
     rooftop_trajectory_path: Path | str | None = None,
     rooftop_profile_mode: str | None = None,
+    solar_start_minutes: int = 360,
+    solar_end_minutes: int = 1080,
 ) -> GenerationResult:
     if projection_end_year < projection_start_year:
         raise ProfileGenerationError(
@@ -1158,6 +1351,7 @@ def generate_profiles(
     base_days, periods_per_day, _ = load_base_profile(
         base_profile_path, base_start_date, base_end_date
     )
+    validate_solar_window(solar_start_minutes, solar_end_minutes, periods_per_day)
     interval_hours = 24.0 / periods_per_day
     base_values = [value for base_day in base_days for value in base_day.values]
     base_profile_peak = float(max(base_values))
@@ -1292,6 +1486,12 @@ def generate_profiles(
                 if len(mapped_day.values) != periods_per_day:
                     raise ProfileGenerationError("Internal period-count mismatch.")
                 for period in range(1, periods_per_day + 1):
+                    classification = period_classification(
+                        period,
+                        periods_per_day,
+                        solar_start_minutes,
+                        solar_end_minutes,
+                    )
                     if rooftop_enabled:
                         assert adjusted_values is not None
                         assert rooftop_generation is not None
@@ -1303,6 +1503,7 @@ def generate_profiles(
                                 "month": projection_date.month,
                                 "day": projection_date.day,
                                 "period": period,
+                                "Period classification": classification,
                                 "demand before rooftop": f"{projected[index]:.3f}",
                                 "incremental rooftop capacity": f"{incremental_capacities[index]:.3f}",
                                 "incremental rooftop generation": f"{rooftop_generation[index]:.3f}",
@@ -1317,6 +1518,7 @@ def generate_profiles(
                                 "month": projection_date.month,
                                 "day": projection_date.day,
                                 "period": period,
+                                "Period classification": classification,
                                 "projected demand": projected[index],
                             }
                         )
@@ -1345,6 +1547,50 @@ def generate_profiles(
                 adjusted_peak_index // periods_per_day
             ]
             adjusted_peak_period = adjusted_peak_index % periods_per_day + 1
+            # Rooftop CSV values are fixed to three decimals; use that same
+            # precision so summary maxima and earliest-tie timing match the export.
+            classified_before_values = (
+                [float(f"{value:.3f}") for value in projected]
+                if rooftop_enabled
+                else projected
+            )
+            classified_final_values = (
+                [float(f"{value:.3f}") for value in final_values]
+                if rooftop_enabled
+                else final_values
+            )
+            before_solar_peak = _classified_peak(
+                classified_before_values,
+                projection_dates,
+                periods_per_day,
+                solar_start_minutes,
+                solar_end_minutes,
+                "Solar",
+            )
+            before_non_solar_peak = _classified_peak(
+                classified_before_values,
+                projection_dates,
+                periods_per_day,
+                solar_start_minutes,
+                solar_end_minutes,
+                "Non-solar",
+            )
+            final_solar_peak = _classified_peak(
+                classified_final_values,
+                projection_dates,
+                periods_per_day,
+                solar_start_minutes,
+                solar_end_minutes,
+                "Solar",
+            )
+            final_non_solar_peak = _classified_peak(
+                classified_final_values,
+                projection_dates,
+                periods_per_day,
+                solar_start_minutes,
+                solar_end_minutes,
+                "Non-solar",
+            )
             year_end_capacity = (
                 None
                 if rooftop_trajectory is None
@@ -1409,6 +1655,58 @@ def generate_profiles(
                     ),
                     adjusted_peak_period=(
                         adjusted_peak_period if rooftop_enabled else None
+                    ),
+                    solar_peak_mw=final_solar_peak.magnitude_mw,
+                    solar_peak_date=final_solar_peak.date,
+                    solar_peak_period=final_solar_peak.period,
+                    non_solar_peak_mw=final_non_solar_peak.magnitude_mw,
+                    non_solar_peak_date=final_non_solar_peak.date,
+                    non_solar_peak_period=final_non_solar_peak.period,
+                    before_rooftop_solar_peak_mw=(
+                        before_solar_peak.magnitude_mw if rooftop_enabled else None
+                    ),
+                    before_rooftop_solar_peak_date=(
+                        before_solar_peak.date if rooftop_enabled else None
+                    ),
+                    before_rooftop_solar_peak_period=(
+                        before_solar_peak.period if rooftop_enabled else None
+                    ),
+                    before_rooftop_non_solar_peak_mw=(
+                        before_non_solar_peak.magnitude_mw if rooftop_enabled else None
+                    ),
+                    before_rooftop_non_solar_peak_date=(
+                        before_non_solar_peak.date if rooftop_enabled else None
+                    ),
+                    before_rooftop_non_solar_peak_period=(
+                        before_non_solar_peak.period if rooftop_enabled else None
+                    ),
+                    solar_peak_reduction_mw=(
+                        before_solar_peak.magnitude_mw - final_solar_peak.magnitude_mw
+                        if rooftop_enabled
+                        else None
+                    ),
+                    solar_peak_reduction_percent=(
+                        (before_solar_peak.magnitude_mw - final_solar_peak.magnitude_mw)
+                        / before_solar_peak.magnitude_mw
+                        * 100.0
+                        if rooftop_enabled and before_solar_peak.magnitude_mw
+                        else None
+                    ),
+                    non_solar_peak_reduction_mw=(
+                        before_non_solar_peak.magnitude_mw
+                        - final_non_solar_peak.magnitude_mw
+                        if rooftop_enabled
+                        else None
+                    ),
+                    non_solar_peak_reduction_percent=(
+                        (
+                            before_non_solar_peak.magnitude_mw
+                            - final_non_solar_peak.magnitude_mw
+                        )
+                        / before_non_solar_peak.magnitude_mw
+                        * 100.0
+                        if rooftop_enabled and before_non_solar_peak.magnitude_mw
+                        else None
                     ),
                 )
             )
@@ -1478,7 +1776,7 @@ def _growth_percent(new_value: float, old_value: float) -> float | None:
 
 def summaries_as_dicts(
     summaries: Iterable[YearSummary],
-) -> list[dict[str, float | int | bool | None]]:
+) -> list[dict[str, float | int | str | bool | None]]:
     items = list(summaries)
     rows = []
     for index, item in enumerate(items):
@@ -1493,6 +1791,10 @@ def summaries_as_dicts(
             previous = items[index - 1]
             previous_peak = previous.target_peak_mw
             previous_energy = previous.target_energy_gwh
+        previous_solar_peak = None if index == 0 else items[index - 1].solar_peak_mw
+        previous_non_solar_peak = (
+            None if index == 0 else items[index - 1].non_solar_peak_mw
+        )
 
         rows.append(
             {
@@ -1536,6 +1838,34 @@ def summaries_as_dicts(
                 "unadjusted_peak_period": item.unadjusted_peak_period,
                 "adjusted_peak_date": item.adjusted_peak_date,
                 "adjusted_peak_period": item.adjusted_peak_period,
+                "solar_peak_mw": item.solar_peak_mw,
+                "solar_peak_date": item.solar_peak_date,
+                "solar_peak_period": item.solar_peak_period,
+                "solar_peak_growth_percent": (
+                    None
+                    if previous_solar_peak is None
+                    else _growth_percent(item.solar_peak_mw, previous_solar_peak)
+                ),
+                "non_solar_peak_mw": item.non_solar_peak_mw,
+                "non_solar_peak_date": item.non_solar_peak_date,
+                "non_solar_peak_period": item.non_solar_peak_period,
+                "non_solar_peak_growth_percent": (
+                    None
+                    if previous_non_solar_peak is None
+                    else _growth_percent(
+                        item.non_solar_peak_mw, previous_non_solar_peak
+                    )
+                ),
+                "before_rooftop_solar_peak_mw": item.before_rooftop_solar_peak_mw,
+                "before_rooftop_solar_peak_date": item.before_rooftop_solar_peak_date,
+                "before_rooftop_solar_peak_period": item.before_rooftop_solar_peak_period,
+                "before_rooftop_non_solar_peak_mw": item.before_rooftop_non_solar_peak_mw,
+                "before_rooftop_non_solar_peak_date": item.before_rooftop_non_solar_peak_date,
+                "before_rooftop_non_solar_peak_period": item.before_rooftop_non_solar_peak_period,
+                "solar_peak_reduction_mw": item.solar_peak_reduction_mw,
+                "solar_peak_reduction_percent": item.solar_peak_reduction_percent,
+                "non_solar_peak_reduction_mw": item.non_solar_peak_reduction_mw,
+                "non_solar_peak_reduction_percent": item.non_solar_peak_reduction_percent,
             }
         )
     return rows

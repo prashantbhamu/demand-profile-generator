@@ -15,6 +15,9 @@ const {
   formatPeakIntervalCell,
   populateResults,
   requiredFilesReady,
+  formatMinutes,
+  parseTimeMinutes,
+  setSummaryPeriod,
   setupChart,
 } = require('../profile_tool/static/app.js');
 
@@ -31,6 +34,11 @@ assert.match(
   formatPeakIntervalCell('2030-05-15', 73, 96),
   /15 May 2030.*18:00–18:15/
 );
+assert.equal(formatMinutes(360), '06:00');
+assert.equal(formatMinutes(1440), '24:00');
+assert.equal(parseTimeMinutes('18:15'), 1095);
+assert.equal(parseTimeMinutes('24:00'), 1440);
+assert.equal(parseTimeMinutes('25:00'), null);
 
 const standardFiles = { base:{}, peak:{}, energy:{} };
 assert.equal(requiredFilesReady(standardFiles, false, 'empty', 'empty'), true);
@@ -38,6 +46,10 @@ const rooftopFiles = { ...standardFiles, rooftopProfile:{}, rooftopTrajectory:{}
 assert.equal(requiredFilesReady(rooftopFiles, true, 'valid', 'valid'), true);
 assert.equal(requiredFilesReady(rooftopFiles, true, 'valid', 'validating'), false);
 assert.equal(requiredFilesReady(rooftopFiles, true, 'error', 'valid'), false);
+const validCore = Object.fromEntries(['base','peak','energy'].map(key => [key,{status:'valid'}]));
+const invalidCore = { ...validCore, peak:{status:'error'} };
+assert.equal(requiredFilesReady(standardFiles, false, 'empty', 'empty', validCore), true);
+assert.equal(requiredFilesReady(standardFiles, false, 'empty', 'empty', invalidCore), false);
 
 const elements = new Map([
   ['output-path-text', {}], ['metrics-grid', {}], ['summary-head', {}],
@@ -55,12 +67,20 @@ const summary = {
   rooftop_year_end_capacity_mw: 500, adjusted_minimum_mw: -5,
   unadjusted_peak_date: '2030-05-14', unadjusted_peak_period: 72,
   adjusted_peak_date: '2030-05-15', adjusted_peak_period: 73,
+  solar_peak_mw: 225, solar_peak_date: '2030-05-15', solar_peak_period: 71,
+  before_rooftop_solar_peak_mw: 250,
+  before_rooftop_solar_peak_date: '2030-05-14', before_rooftop_solar_peak_period: 72,
+  solar_peak_reduction_mw: 25, solar_peak_reduction_percent: 10,
+  non_solar_peak_mw: 215, non_solar_peak_date: '2030-05-16', non_solar_peak_period: 73,
+  before_rooftop_non_solar_peak_mw: 220,
+  before_rooftop_non_solar_peak_date: '2030-05-16', before_rooftop_non_solar_peak_period: 74,
+  non_solar_peak_reduction_mw: 5, non_solar_peak_reduction_percent: 2.27,
 };
 populateResults({output_path:'utility_rooftop_adjusted.csv', rows_written:35040, summaries:[summary]});
 assert.match(elements.get('metrics-grid').innerHTML, /Profile CUF/);
 assert.doesNotMatch(elements.get('metrics-grid').innerHTML, /Minimum/);
-assert.match(elements.get('summary-head').innerHTML, /Unadjusted peak/);
-assert.match(elements.get('summary-head').innerHTML, /Adjusted peak timing/);
+assert.match(elements.get('summary-head').innerHTML, /Overall peak/);
+assert.match(elements.get('summary-head').innerHTML, /Solar-period peak/);
 assert.match(elements.get('summary-head').innerHTML, /Projected CUF/);
 assert.doesNotMatch(elements.get('summary-head').innerHTML, /MW|GWh|Effective|FY-end/);
 assert.match(elements.get('summary-tbody').innerHTML, /2025-26/);
@@ -70,7 +90,29 @@ assert.match(elements.get('summary-tbody').innerHTML, /25 MW.*\(10\.00%\)/);
 assert.match(elements.get('summary-tbody').innerHTML, /negative-value/);
 assert.doesNotMatch(elements.get('summary-tbody').innerHTML, /Net export/);
 assert.match(elements.get('summary-tbody').innerHTML, /17:45–18:00/);
+
+setSummaryPeriod('non_solar');
+assert.match(elements.get('summary-head').innerHTML, /Non-solar-period peak/);
+assert.match(elements.get('summary-tbody').innerHTML, /215 MW/);
+assert.match(elements.get('summary-tbody').innerHTML, /5 MW.*\(2\.27%\)/);
 assert.match(elements.get('summary-tbody').innerHTML, /18:00–18:15/);
+
+setSummaryPeriod('solar');
+populateResults({output_path:'utility_projected_demand.csv', rows_written:8760, summaries:[{
+  financial_year:'2025-26', rooftop_enabled:false, periods_per_day:24, row_count:8760,
+  achieved_peak_mw:240, achieved_energy_gwh:1000, energy_growth_percent:null,
+  solar_peak_mw:220, solar_peak_date:'2025-05-01', solar_peak_period:18,
+  solar_peak_growth_percent:null, non_solar_peak_mw:240,
+  non_solar_peak_date:'2025-06-01', non_solar_peak_period:24,
+  non_solar_peak_growth_percent:null,
+}]});
+assert.match(elements.get('summary-head').innerHTML, /Solar-period peak/);
+assert.match(elements.get('summary-tbody').innerHTML, /220 MW/);
+assert.match(elements.get('summary-tbody').innerHTML, /17:00–18:00/);
+setSummaryPeriod('non_solar');
+assert.match(elements.get('summary-head').innerHTML, /Non-solar-period peak/);
+assert.match(elements.get('summary-tbody').innerHTML, /240 MW/);
+assert.match(elements.get('summary-tbody').innerHTML, /23:00–24:00/);
 
 setupChart({rooftop_enabled:true, years:[{
   year:2025, label:'2025-26', start_date:'2025-04-01', periods_per_day:24,

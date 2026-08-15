@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import mimetypes
 import tempfile
@@ -25,6 +26,9 @@ from profile_tool import __version__
 from profile_tool.core import (
     ProfileGenerationError,
     generate_profiles,
+    inspect_base_profile,
+    inspect_targets,
+    load_base_profile,
     load_rooftop_profile,
     load_rooftop_trajectory,
     parse_date,
@@ -244,6 +248,12 @@ class ProfileToolHandler(SimpleHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
     def do_POST(self) -> None:  # noqa: N802
+        if self.path == "/validate-base-profile":
+            self._validate_base_profile()
+            return
+        if self.path == "/validate-target-file":
+            self._validate_target_file()
+            return
         if self.path == "/validate-rooftop-profile":
             self._validate_rooftop_profile()
             return
@@ -315,6 +325,104 @@ class ProfileToolHandler(SimpleHTTPRequestHandler):
             )
             return
         self._send_json(result)
+
+    def _validate_base_profile(self) -> None:
+        try:
+            form = self._parse_multipart_form()
+            base_year = int(self._field_text(form, "base_financial_year"))
+            with tempfile.TemporaryDirectory(prefix="demand_projection_tool_") as temp:
+                path = self._save_upload(form, "base_profile", Path(temp))
+                inspection = inspect_base_profile(path)
+                coverage_valid = True
+                coverage_error = ""
+                try:
+                    load_base_profile(
+                        path,
+                        dt.date(base_year, 4, 1),
+                        dt.date(base_year + 1, 3, 31),
+                    )
+                except ProfileGenerationError as exc:
+                    coverage_valid = False
+                    coverage_error = str(exc)
+        except (ProfileGenerationError, ValueError) as exc:
+            self._send_json({"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        except Exception as exc:  # pragma: no cover - defensive UI boundary.
+            self._send_json(
+                {"ok": False, "error": f"Unexpected error: {exc}"},
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+            return
+        self._send_json(
+            {
+                "ok": True,
+                "row_count": inspection.row_count,
+                "day_count": inspection.day_count,
+                "periods_per_day": inspection.periods_per_day,
+                "value_column": inspection.value_column,
+                "is_normalized": inspection.is_normalized,
+                "coverage_valid": coverage_valid,
+                "coverage_error": coverage_error,
+            }
+        )
+
+    def _validate_target_file(self) -> None:
+        try:
+            form = self._parse_multipart_form()
+            target_kind = self._field_text(form, "target_kind").lower()
+            if target_kind not in {"peak", "energy"}:
+                raise ProfileGenerationError("Target kind must be peak or energy.")
+            projection_start_year = int(
+                self._field_text(form, "projection_start_year")
+            )
+            projection_end_year = int(self._field_text(form, "projection_end_year"))
+            if projection_end_year < projection_start_year:
+                raise ProfileGenerationError(
+                    "Projection end year must be greater than or equal to start year."
+                )
+            preferred_name = self._field_text(
+                form, "profile_name", required=False
+            )
+            upload_name = f"{target_kind}_projection"
+            with tempfile.TemporaryDirectory(prefix="demand_projection_tool_") as temp:
+                path = self._save_upload(form, upload_name, Path(temp))
+                inspection = inspect_targets(path, preferred_name=preferred_name)
+            missing_years = [
+                year
+                for year in range(projection_start_year, projection_end_year + 1)
+                if year not in inspection.targets
+            ]
+        except (ProfileGenerationError, ValueError) as exc:
+            self._send_json({"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        except Exception as exc:  # pragma: no cover - defensive UI boundary.
+            self._send_json(
+                {"ok": False, "error": f"Unexpected error: {exc}"},
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+            return
+        years = sorted(inspection.targets)
+        coverage_valid = not missing_years
+        label = "Peak" if target_kind == "peak" else "Energy"
+        coverage_error = (
+            ""
+            if coverage_valid
+            else f"{label} projection is missing target years: "
+            + ", ".join(str(year) for year in missing_years)
+            + "."
+        )
+        self._send_json(
+            {
+                "ok": True,
+                "target_kind": target_kind,
+                "row_count": len(inspection.targets),
+                "value_column": inspection.value_column,
+                "first_year": years[0],
+                "last_year": years[-1],
+                "coverage_valid": coverage_valid,
+                "coverage_error": coverage_error,
+            }
+        )
 
     def _validate_rooftop_profile(self) -> None:
         try:
@@ -482,6 +590,14 @@ class ProfileToolHandler(SimpleHTTPRequestHandler):
                 rooftop_profile_path=rooftop_profile_path,
                 rooftop_trajectory_path=rooftop_trajectory_path,
                 rooftop_profile_mode=rooftop_profile_mode,
+                solar_start_minutes=int(
+                    self._field_text(form, "solar_start_minutes", required=False)
+                    or "360"
+                ),
+                solar_end_minutes=int(
+                    self._field_text(form, "solar_end_minutes", required=False)
+                    or "1080"
+                ),
             )
 
         return {

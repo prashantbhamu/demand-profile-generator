@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import csv
+import io
+import json
 import threading
 import unittest
-from urllib.request import urlopen
+import uuid
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 from profile_tool.app import ProfileToolHandler, ThreadingHTTPServer
 
@@ -25,6 +30,49 @@ class StaticBrandAssetTests(unittest.TestCase):
     def fetch(self, path: str) -> tuple[str, bytes]:
         with urlopen(f"{self.base_url}{path}") as response:
             return response.headers.get_content_type(), response.read()
+
+    def post_multipart(
+        self,
+        path: str,
+        fields: dict[str, str],
+        files: dict[str, tuple[str, bytes]],
+    ) -> tuple[int, dict]:
+        boundary = f"----codex-{uuid.uuid4().hex}"
+        chunks: list[bytes] = []
+        for name, value in fields.items():
+            chunks.extend(
+                [
+                    f"--{boundary}\r\n".encode(),
+                    f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode(),
+                    str(value).encode(),
+                    b"\r\n",
+                ]
+            )
+        for name, (filename, data) in files.items():
+            chunks.extend(
+                [
+                    f"--{boundary}\r\n".encode(),
+                    (
+                        f'Content-Disposition: form-data; name="{name}"; '
+                        f'filename="{filename}"\r\n'
+                    ).encode(),
+                    b"Content-Type: text/csv\r\n\r\n",
+                    data,
+                    b"\r\n",
+                ]
+            )
+        chunks.append(f"--{boundary}--\r\n".encode())
+        request = Request(
+            f"{self.base_url}{path}",
+            data=b"".join(chunks),
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+            method="POST",
+        )
+        try:
+            with urlopen(request) as response:
+                return response.status, json.loads(response.read())
+        except HTTPError as error:
+            return error.code, json.loads(error.read())
 
     def test_index_uses_prism_identity_and_approved_subtitle(self) -> None:
         content_type, body = self.fetch("/")
@@ -68,6 +116,54 @@ class StaticBrandAssetTests(unittest.TestCase):
         for output_id in range(1, 4):
             self.assertIn(f'id="prism-output-trajectory-{output_id}"', text)
         self.assertEqual(text.count("306.2"), 3)
+
+    def test_base_profile_validation_reports_resolution_and_contextual_coverage(self) -> None:
+        output = io.StringIO()
+        writer = csv.writer(output, lineterminator="\n")
+        writer.writerow(["demand"])
+        for _ in range(365 * 24):
+            writer.writerow([100])
+        status, payload = self.post_multipart(
+            "/validate-base-profile",
+            {"base_financial_year": "2024"},
+            {"base_profile": ("base.csv", output.getvalue().encode())},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["periods_per_day"], 24)
+        self.assertTrue(payload["coverage_valid"])
+
+    def test_target_validation_separates_structure_from_year_coverage(self) -> None:
+        target_csv = b"DateTime,target\n2025-04-01,100\n2026-04-01,110\n"
+        status, payload = self.post_multipart(
+            "/validate-target-file",
+            {
+                "target_kind": "peak",
+                "projection_start_year": "2025",
+                "projection_end_year": "2027",
+                "profile_name": "",
+            },
+            {"peak_projection": ("peak.csv", target_csv)},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["ok"])
+        self.assertFalse(payload["coverage_valid"])
+        self.assertIn("2027", payload["coverage_error"])
+
+    def test_target_validation_returns_actionable_schema_error(self) -> None:
+        status, payload = self.post_multipart(
+            "/validate-target-file",
+            {
+                "target_kind": "energy",
+                "projection_start_year": "2025",
+                "projection_end_year": "2025",
+                "profile_name": "",
+            },
+            {"energy_projection": ("energy.csv", b"year,value\n2025,100\n")},
+        )
+        self.assertEqual(status, 400)
+        self.assertFalse(payload["ok"])
+        self.assertIn("DateTime", payload["error"])
 
 
 if __name__ == "__main__":

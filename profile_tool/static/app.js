@@ -959,6 +959,7 @@ function setupChartInteractions() {
 
 // ── Boot ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  PrismBrand.setupPrismBrand();
   setupFileTiles();
   setupRooftopControls();
   setupFinancialYearInputs();

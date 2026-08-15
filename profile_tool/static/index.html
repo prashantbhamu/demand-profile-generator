@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Demand Projection Tool</title>
+  <title>PRISM</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -20,10 +20,24 @@
   <div class="shell">
 
     <!-- Header -->
-    <header style="display:flex;justify-content:space-between;align-items:center;gap:24px;flex-wrap:wrap;margin-bottom:26px;">
-      <div>
-        <h1 style="font-size:34px;line-height:1.04;font-weight:800;letter-spacing:-0.03em;">Demand Projection Tool</h1>
-        <p style="margin:9px 0 0;color:#5a6a86;font-size:15px;max-width:520px;line-height:1.5;">Create future demand profiles from a base profile and yearly peak demand and energy requirement targets.</p>
+    <header class="app-header">
+      <div class="brand-copy">
+        <div class="prism-brand-stage">
+          <svg class="prism-brand-mark" viewBox="0 0 330 170" aria-hidden="true" focusable="false">
+            <use href="prism-logo.svg#prism-mark"></use>
+          </svg>
+          <button class="prism-brand" id="prism-brand" type="button" aria-expanded="false" aria-label="Expand PRISM full name" data-expanded="false">
+            <span class="prism-wordmark" aria-hidden="true">
+              <span class="prism-term"><span class="prism-initial">P</span><span class="prism-suffix">ower-demand</span></span>
+              <span class="prism-term"><span class="prism-initial">R</span><span class="prism-suffix">econstruction</span></span>
+              <span class="prism-term"><span class="prism-initial">I</span><span class="prism-suffix">ntegration</span></span>
+              <span class="prism-term"><span class="prism-initial">S</span><span class="prism-suffix">caling</span></span>
+              <span class="prism-term"><span class="prism-initial">M</span><span class="prism-suffix">odel</span></span>
+            </span>
+            <span class="sr-only">PRISM: Power-demand Reconstruction, Integration and Scaling Model</span>
+          </button>
+        </div>
+        <p class="app-subtitle">Create future grid-demand profiles from peak and energy targets, with optional rooftop solar adjustment.</p>
       </div>
       <div class="status-pill" id="status-pill">
         <span class="pill-dot" id="pill-dot"></span>
@@ -349,6 +363,7 @@
   </div><!-- /shell -->
 </div><!-- /app-bg -->
 <script src="financial-year.js"></script>
+<script src="prism-brand.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

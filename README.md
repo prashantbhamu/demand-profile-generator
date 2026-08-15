@@ -61,15 +61,15 @@ Financial Year,Cumulative MW
 The preferred rooftop-profile columns are:
 
 ```text
-Daily:  Period,Rooftop CF
-Monthly: Month,Period,Rooftop CF
-Annual: Month,Day,Period,Rooftop CF
+Daily:  Period,Normalized value (p.u.)
+Monthly: Month,Period,Normalized value (p.u.)
+Annual: Month,Day,Period,Normalized value (p.u.)
 ```
 
-`Rooftop CF` must be between 0 and 1. Rooftop and demand profiles must use the
-same 24- or 96-period resolution. Sparse cumulative-capacity milestones are
-linearly interpolated, but the trajectory must include the reference-FY baseline
-and cover the final projection FY.
+`Normalized value (p.u.)` must be between 0 and 1. Rooftop and demand profiles
+must use the same 24- or 96-period resolution. Sparse cumulative-capacity
+milestones are linearly interpolated, but the trajectory must include the
+reference-FY baseline and cover the final projection FY.
 
 Financial years are entered as `YYYY-YY`. Entering a four-digit start year such as
 `2025` automatically completes it to `2025-26`.
@@ -103,10 +103,10 @@ demand is retained as net export.
 
 The interface reports annual row count, achieved peak, achieved energy, and year-on-year peak and energy growth. It also compares the calendar-mapped base profile with the projected profile using peak-normalized chart series, with year selection, hover details, zoom, pan, reset, and fullscreen controls.
 
-Rooftop-mode results instead compare before- and after-rooftop peak and energy,
-rooftop generation and CUF, FY-end rooftop capacity, minimum demand, and the
-adjusted peak interval. Its chart uses an absolute-MW axis with before-rooftop,
-adjusted-demand, and rooftop-generation series.
+Rooftop-mode results compare unadjusted and adjusted peak, peak timing, and
+energy; rooftop generation; minimum demand; and projected CUF. Its chart uses an
+absolute-MW axis with unadjusted-demand, adjusted-demand, and rooftop-generation
+series.
 
 ## Source Structure
 

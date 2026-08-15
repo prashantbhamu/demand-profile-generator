@@ -13,6 +13,7 @@ from profile_tool.core import (
     interpolate_rooftop_capacity,
     load_rooftop_profile,
     load_rooftop_trajectory,
+    summaries_as_dicts,
     validate_rooftop_trajectory_coverage,
 )
 
@@ -100,6 +101,21 @@ class GenerateProfilesFinancialYearTests(unittest.TestCase):
             self.assertEqual(rows[8760][0], "2025-26")
             self.assertEqual(rows[8761][0], "2026-27")
             self.assertEqual(rows[-1][0], "2026-27")
+            self.assertEqual(
+                result.output_path.name,
+                "test_projected_demand_2025_2026.csv",
+            )
+            self.assertEqual(rows[1][1:5], ["2025", "4", "1", "1"])
+            self.assertAlmostEqual(float(rows[1][-1]), 100.0, places=9)
+            self.assertAlmostEqual(result.summaries[0].achieved_peak_mw, 123.0)
+            expected_energy_gwh = (
+                sum(100 + period for period in range(24)) * 365 / 1000
+            )
+            self.assertAlmostEqual(
+                result.summaries[0].achieved_energy_gwh,
+                expected_energy_gwh,
+                places=9,
+            )
 
     def test_generation_rejects_calendar_year_base_period(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -172,16 +188,18 @@ class GenerateProfilesFinancialYearTests(unittest.TestCase):
         with path.open("w", newline="", encoding="utf-8") as handle:
             writer = csv.writer(handle)
             if mode == "daily":
-                writer.writerow(["Period", "Rooftop CF"])
+                writer.writerow(["Period", "Normalized value (p.u.)"])
                 for period in range(1, periods_per_day + 1):
                     writer.writerow([period, cf])
             elif mode == "monthly":
-                writer.writerow(["Month", "Period", "Rooftop CF"])
+                writer.writerow(["Month", "Period", "Normalized value (p.u.)"])
                 for month in range(1, 13):
                     for period in range(1, periods_per_day + 1):
                         writer.writerow([month, period, cf])
             else:
-                writer.writerow(["Month", "Day", "Period", "Rooftop CF"])
+                writer.writerow(
+                    ["Month", "Day", "Period", "Normalized value (p.u.)"]
+                )
                 day = dt.date(2023, 1, 1)
                 while day <= dt.date(2023, 12, 31):
                     for period in range(1, periods_per_day + 1):
@@ -275,6 +293,22 @@ class GenerateProfilesFinancialYearTests(unittest.TestCase):
             )
             self.assertEqual(result.graph["normalization"], "absolute_mw")
             self.assertEqual(result.graph["years"][0]["label"], "2025-26")
+            self.assertEqual(
+                result.graph["years"][0]["before_rooftop"]["label"],
+                "Unadjusted demand",
+            )
+            summary = result.summaries[0]
+            self.assertIsNotNone(summary.unadjusted_peak_date)
+            self.assertIsNotNone(summary.unadjusted_peak_period)
+            summary_payload = summaries_as_dicts(result.summaries)[0]
+            self.assertEqual(
+                summary_payload["unadjusted_peak_date"],
+                summary.unadjusted_peak_date,
+            )
+            self.assertEqual(
+                summary_payload["unadjusted_peak_period"],
+                summary.unadjusted_peak_period,
+            )
 
     def test_rooftop_resolution_must_match_demand(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -331,18 +365,31 @@ class GenerateProfilesFinancialYearTests(unittest.TestCase):
             path = root / "invalid-rooftop.csv"
             with path.open("w", newline="", encoding="utf-8") as handle:
                 writer = csv.writer(handle)
-                writer.writerow(["Period", "Capacity Factor"])
+                writer.writerow(["Period", "Normalized value (p.u.)"])
                 for period in range(1, 24):
                     writer.writerow([period, 1.2 if period == 12 else 0.5])
             with self.assertRaisesRegex(ProfileGenerationError, "between 0 and 1"):
                 load_rooftop_profile(path, "daily")
 
-            rows = [["Period", "Capacity Factor"]] + [
+            rows = [["Period", "Normalized value (p.u.)"]] + [
                 [period, 0.5] for period in range(1, 25) if period != 12
             ]
             with path.open("w", newline="", encoding="utf-8") as handle:
                 csv.writer(handle).writerows(rows)
             with self.assertRaisesRegex(ProfileGenerationError, "consecutive"):
+                load_rooftop_profile(path, "daily")
+
+    def test_rooftop_profile_rejects_retired_cf_header(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "retired-header.csv"
+            with path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(["Period", "Rooftop CF"])
+                for period in range(1, 25):
+                    writer.writerow([period, 0.5])
+            with self.assertRaisesRegex(
+                ProfileGenerationError, r"Normalized value \(p.u.\)"
+            ):
                 load_rooftop_profile(path, "daily")
 
     def test_rooftop_trajectory_rejects_decrease_and_missing_final_coverage(self) -> None:

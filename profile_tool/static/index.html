@@ -80,7 +80,7 @@
             <h2 style="font-size:23px;font-weight:800;letter-spacing:-0.02em;margin-bottom:6px;">Upload your data</h2>
             <p style="color:#5a6a86;font-size:14px;margin-bottom:24px;">Upload CSV or XLSX files for the base shape and projection targets.</p>
 
-            <div style="display:flex;flex-direction:column;gap:12px;">
+            <div class="standard-file-grid">
               <!-- Base profile -->
               <label class="file-tile" id="tile-base" data-key="base">
                 <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" id="input-base" style="position:absolute;width:0;height:0;opacity:0;">
@@ -157,7 +157,7 @@
                   <option value="annual">Full annual profile</option>
                 </select>
               </div>
-              <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px;">
+              <div class="rooftop-file-grid">
                 <label class="file-tile" id="tile-rooftopTrajectory" data-key="rooftopTrajectory">
                   <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" id="input-rooftopTrajectory" style="position:absolute;width:0;height:0;opacity:0;">
                   <div class="file-badge" id="badge-rooftopTrajectory">T</div>
@@ -182,7 +182,7 @@
                       <span>Rooftop generation profile</span>
                       <span class="info-popover">
                         <span class="info-trigger" role="button" tabindex="0" aria-label="Rooftop profile input format" aria-describedby="help-rooftop-profile" aria-expanded="false">i</span>
-                        <span class="info-balloon" id="help-rooftop-profile" role="tooltip">Rooftop CF must be between 0 and 1. Daily columns: Period, Rooftop CF. Monthly: Month, Period, Rooftop CF. Annual: Month, Day, Period, Rooftop CF. Use exactly 24 or 96 periods/day matching the demand profile.</span>
+                        <span class="info-balloon" id="help-rooftop-profile" role="tooltip">Normalized value (p.u.) must be between 0 and 1. Daily columns: Period, Normalized value (p.u.). Monthly: Month, Period, Normalized value (p.u.). Annual: Month, Day, Period, Normalized value (p.u.). Use exactly 24 or 96 periods/day matching the demand profile.</span>
                       </span>
                     </div>
                     <div class="file-name" id="name-rooftopProfile">Drag &amp; drop or click to browse</div>
@@ -204,8 +204,8 @@
             <h2 style="font-size:23px;font-weight:800;letter-spacing:-0.02em;margin-bottom:6px;">Configure the run</h2>
             <p style="color:#5a6a86;font-size:14px;margin-bottom:24px;">Set the base financial year, projection span, and where the output CSV should land.</p>
 
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-              <div class="field" style="grid-column:1/-1;">
+            <div class="config-grid">
+              <div class="field">
                 <label for="f-base-year">Base financial year</label>
                 <input type="text" inputmode="numeric" id="f-base-year" value="2024-25" maxlength="7" autocomplete="off" aria-describedby="f-base-year-error">
                 <div class="field-error" id="f-base-year-error" aria-live="polite"></div>
@@ -220,11 +220,11 @@
                 <input type="text" inputmode="numeric" id="f-end-year" value="2035-36" maxlength="7" autocomplete="off" aria-describedby="f-end-year-error">
                 <div class="field-error" id="f-end-year-error" aria-live="polite"></div>
               </div>
-              <div class="field" style="grid-column:1/-1;">
+              <div class="field config-wide">
                 <label for="f-profile">Profile name</label>
                 <input type="text" id="f-profile" placeholder="output file name">
               </div>
-              <div class="field" style="grid-column:1/-1;">
+              <div class="field config-wide">
                 <label for="f-folder">Output folder</label>
                 <div style="display:flex;gap:10px;">
                   <input type="text" id="f-folder" readonly placeholder="No folder selected">
@@ -316,19 +316,20 @@
           </div>
 
           <!-- Summary table -->
-          <div style="border-radius:18px;background:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.7);overflow:hidden;">
+          <div class="summary-panel">
             <div style="padding:18px 22px 10px;">
               <div class="kicker">Year-by-year</div>
               <h3 style="font-size:17px;font-weight:700;">Run summary</h3>
             </div>
-            <div style="overflow-x:auto;">
-              <table>
+            <div class="summary-scroll-hint" aria-hidden="true" hidden>Scroll horizontally for more →</div>
+            <div class="summary-table-scroll">
+              <table class="summary-table">
                 <thead id="summary-head">
                   <tr>
-                    <th>Financial year</th>
+                    <th>FY</th>
                     <th>Rows</th>
-                    <th>Peak MW</th>
-                    <th>Energy GWh</th>
+                    <th>Peak</th>
+                    <th>Energy</th>
                     <th>Peak YoY</th>
                     <th>Energy YoY</th>
                   </tr>

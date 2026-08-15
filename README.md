@@ -115,14 +115,20 @@ demand is retained as net export.
 
 ## Results And Chart
 
-The interface reports annual row count, achieved peak, achieved energy, and year-on-year peak and energy growth. It also compares the calendar-mapped base profile with the projected profile using peak-normalized chart series, with year selection, hover details, zoom, pan, reset, and fullscreen controls.
+The interface reports annual row count, achieved peak, achieved energy, and
+year-on-year peak and energy growth. It also compares the calendar-mapped base
+profile with the projected profile using peak-normalized chart series, with year
+selection, hover details, zoom, pan, reset, and fullscreen controls. Vertical
+guides follow calendar month, week, day, and six-hour boundaries as the view is
+zoomed or panned.
 
-A sun/half-moon control switches the summary between solar-period and non-solar-
+A sun/crescent-moon control switches the summary between solar-period and non-solar-
 period peak magnitude, timing, and growth while retaining the overall annual
 peak.
 
 Rooftop-mode results compare unadjusted and adjusted peak, peak timing, and
-energy; rooftop generation; minimum demand; and projected CUF. Its chart uses an
+energy; cumulative FY-end rooftop capacity; rooftop generation; minimum demand;
+and projected CUF. Its chart uses an
 absolute-MW axis with unadjusted-demand, adjusted-demand, and rooftop-generation
 series.
 

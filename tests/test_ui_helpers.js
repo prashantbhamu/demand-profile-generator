@@ -19,6 +19,7 @@ const {
   parseTimeMinutes,
   setSummaryPeriod,
   setupChart,
+  buildTimeGridTicks,
 } = require('../profile_tool/static/app.js');
 
 assert.equal(intervalRange(1, 24), '00:00–01:00');
@@ -83,6 +84,7 @@ assert.match(elements.get('metrics-grid').innerHTML, /Profile CUF/);
 assert.doesNotMatch(elements.get('metrics-grid').innerHTML, /Minimum/);
 assert.match(elements.get('summary-head').innerHTML, /Overall peak/);
 assert.match(elements.get('summary-head').innerHTML, /Peak during solar period/);
+assert.match(elements.get('summary-head').innerHTML, /Cumulative rooftop capacity/);
 assert.match(elements.get('summary-head').innerHTML, /Unadjusted timing/);
 assert.match(elements.get('summary-head').innerHTML, /Adjusted timing/);
 assert.doesNotMatch(elements.get('summary-head').innerHTML, /Before rooftop|After rooftop/);
@@ -92,6 +94,7 @@ assert.doesNotMatch(elements.get('summary-head').innerHTML, /MW|GWh|Effective|FY
 assert.match(elements.get('summary-tbody').innerHTML, /2025-26/);
 assert.match(elements.get('summary-tbody').innerHTML, /250 MW/);
 assert.match(elements.get('summary-energy-tbody').innerHTML, /1,000 GWh/);
+assert.match(elements.get('summary-tbody').innerHTML, /500 MW/);
 assert.match(elements.get('summary-tbody').innerHTML, /25 MW.*\(10\.00%\)/);
 assert.match(elements.get('summary-energy-tbody').innerHTML, /negative-value/);
 assert.doesNotMatch(elements.get('summary-tbody').innerHTML, /Net export/);
@@ -134,4 +137,40 @@ assert.match(elements.get('chart-title').textContent, /Rooftop-adjusted demand p
 assert.match(elements.get('chart-legend').innerHTML, /Unadjusted demand/);
 assert.match(elements.get('chart-legend').innerHTML, /Rooftop generation/);
 
+
+const hourlyYear = {
+  startDate:'2025-04-01', periodsPerDay:24, base:Array(365 * 24).fill(0),
+};
+const fullYearTicks = buildTimeGridTicks(hourlyYear, 0, 1);
+assert.deepEqual(
+  fullYearTicks.map(tick => tick.label),
+  ['Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar']
+);
+assert.ok(fullYearTicks.every(tick => tick.kind === 'month'));
+
+const twoDayMax = (2 * hourlyYear.periodsPerDay) / (hourlyYear.base.length - 1);
+const closeTicks = buildTimeGridTicks(hourlyYear, 0, twoDayMax);
+assert.ok(closeTicks.some(tick => tick.label === '01 Apr' && tick.kind === 'month'));
+assert.ok(closeTicks.some(tick => tick.label === '02 Apr' && tick.kind === 'day'));
+assert.ok(closeTicks.some(tick => tick.label === '06:00' && tick.kind === 'hour'));
+assert.ok(closeTicks.some(tick => tick.label === '18:00' && tick.kind === 'hour'));
+
+const panStart = (40 * hourlyYear.periodsPerDay + 6) / (hourlyYear.base.length - 1);
+const panEnd = (42 * hourlyYear.periodsPerDay + 6) / (hourlyYear.base.length - 1);
+const pannedTicks = buildTimeGridTicks(hourlyYear, panStart, panEnd);
+assert.ok(pannedTicks.some(tick => tick.label === '12 May' && tick.kind === 'day'));
+assert.ok(pannedTicks.some(tick => tick.label === '13 May' && tick.kind === 'day'));
+assert.ok(pannedTicks.every(tick => tick.pos >= panStart && tick.pos <= panEnd));
+assert.ok(pannedTicks.every(tick => tick.label !== '01 Apr'));
+
+const leapYear = {
+  startDate:'2027-04-01', periodsPerDay:96, base:Array(366 * 96).fill(0),
+};
+const leapStart = new Date('2027-04-01T00:00:00');
+const leapDay = new Date('2028-02-29T00:00:00');
+const leapOffset = Math.round((leapDay - leapStart) / 86400000);
+const leapMin = (leapOffset * leapYear.periodsPerDay) / (leapYear.base.length - 1);
+const leapMax = ((leapOffset + 2) * leapYear.periodsPerDay) / (leapYear.base.length - 1);
+const leapTicks = buildTimeGridTicks(leapYear, leapMin, leapMax);
+assert.ok(leapTicks.some(tick => tick.label === '29 Feb' && tick.kind === 'day'));
 console.log('UI helper tests passed.');

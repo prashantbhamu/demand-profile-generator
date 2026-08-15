@@ -653,7 +653,7 @@ button, input { font: inherit; }
   border-collapse: separate;
   border-spacing: 0;
 }
-.summary-table:has(.summary-group-row) { min-width: 1030px; }
+.summary-table:has(.summary-group-row) { min-width: 1180px; }
 .summary-energy-table { min-width: 760px; }
 .summary-table th,
 .summary-table td {

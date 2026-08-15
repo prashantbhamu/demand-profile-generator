@@ -13,7 +13,6 @@
 const ACCENT  = '#3b6ef6';
 const MONTHS  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const DEFAULT_PERIODS = 24;
-const DAYS_PER_YEAR   = 365;
 const {
   basePeriodForStartYear,
   bindFinancialYearInput,
@@ -832,6 +831,7 @@ function populateResults(data) {
     document.getElementById('summary-head').innerHTML = `
       <tr class="summary-group-row">
         <th class="summary-fy" rowspan="2">FY</th>
+        <th rowspan="2" title="Cumulative rooftop capacity at the end of the financial year">Cumulative rooftop capacity</th>
         <th colspan="2">Overall peak</th>
         <th colspan="5">Peak during ${classLabel.toLowerCase()}</th>
       </tr>
@@ -843,6 +843,7 @@ function populateResults(data) {
     document.getElementById('summary-tbody').innerHTML = sums.map(s => {
       return `<tr>
         <td class="summary-fy" data-label="FY">${fyOf(s)}</td>
+        <td data-label="Cumulative rooftop capacity">${nf(s.rooftop_year_end_capacity_mw)} MW</td>
         <td data-label="Overall peak — Unadjusted demand">${nf(s.before_rooftop_peak_mw)} MW</td>
         <td data-label="Overall peak — Adjusted demand">${nf(s.achieved_peak_mw)} MW</td>
         <td data-label="${classLabel} — Unadjusted peak">${nf(s[beforePeakKey])} MW</td>
@@ -1017,14 +1018,66 @@ function buildTopEnvelope(pts, pl, yOf) {
   return arr;
 }
 
-function xLabelFor(pos, yr, mode) {
-  const n = yr.base.length, p = yr.periodsPerDay;
-  const idx = Math.max(0, Math.min(n - 1, Math.round(pos * (n - 1))));
-  const day = Math.floor(idx / p), period = idx % p;
-  const d = new Date(yr.startDate + 'T00:00:00'); d.setDate(d.getDate() + day);
-  if (mode === 'hour') return intervalRange(period + 1, p).split('–')[0];
-  if (mode === 'day')  return `${String(d.getDate()).padStart(2,'0')} ${MONTHS[d.getMonth()]}`;
-  return MONTHS[d.getMonth()];
+function buildTimeGridTicks(yr, min = 0, max = 1) {
+  const n = yr?.base?.length || 0;
+  const periodsPerDay = Number(yr?.periodsPerDay);
+  if (n < 2 || !periodsPerDay || !yr?.startDate) return [];
+
+  const safeMin = Math.max(0, Math.min(1, Number(min)));
+  const safeMax = Math.max(safeMin, Math.min(1, Number(max)));
+  const firstIndex = Math.max(0, Math.floor(safeMin * (n - 1)));
+  const lastIndex = Math.min(n - 1, Math.ceil(safeMax * (n - 1)));
+  const firstDay = Math.max(0, Math.floor(firstIndex / periodsPerDay));
+  const lastDay = Math.min(Math.ceil(n / periodsPerDay) - 1, Math.floor(lastIndex / periodsPerDay));
+  const visibleDays = Math.max(1, (lastIndex - firstIndex + 1) / periodsPerDay);
+  const startDate = new Date(`${yr.startDate}T00:00:00`);
+  const ticks = [];
+
+  const dateForDay = dayOffset => {
+    const date = new Date(startDate);
+    date.setDate(date.getDate() + dayOffset);
+    return date;
+  };
+  const dayLabel = date => `${String(date.getDate()).padStart(2,'0')} ${MONTHS[date.getMonth()]}`;
+  const addTick = (dayOffset, periodOffset, kind, label = '') => {
+    const index = dayOffset * periodsPerDay + periodOffset;
+    if (index < 0 || index > n - 1) return;
+    const pos = index / (n - 1);
+    if (pos < safeMin - 1e-9 || pos > safeMax + 1e-9) return;
+    ticks.push({ pos, kind, label });
+  };
+
+  if (visibleDays <= 3) {
+    const quarterDay = periodsPerDay / 4;
+    for (let day = firstDay; day <= lastDay; day++) {
+      const date = dateForDay(day);
+      for (let quarter = 0; quarter < 4; quarter++) {
+        const periodOffset = quarter * quarterDay;
+        addTick(day, periodOffset, quarter === 0 ? (date.getDate() === 1 ? 'month' : 'day') : 'hour',
+          quarter === 0 ? dayLabel(date) : formatMinutes(periodOffset * 1440 / periodsPerDay));
+      }
+    }
+  } else if (visibleDays <= 31) {
+    const labelEvery = visibleDays <= 10 ? 1 : (visibleDays <= 20 ? 2 : 5);
+    for (let day = firstDay; day <= lastDay; day++) {
+      const date = dateForDay(day);
+      const monthBoundary = date.getDate() === 1;
+      const label = monthBoundary || (day - firstDay) % labelEvery === 0 ? dayLabel(date) : '';
+      addTick(day, 0, monthBoundary ? 'month' : 'day', label);
+    }
+  } else if (visibleDays <= 120) {
+    for (let day = firstDay; day <= lastDay; day++) {
+      const date = dateForDay(day);
+      if (date.getDate() === 1) addTick(day, 0, 'month', dayLabel(date));
+      else if (date.getDay() === 1) addTick(day, 0, 'week', dayLabel(date));
+    }
+  } else {
+    for (let day = firstDay; day <= lastDay; day++) {
+      const date = dateForDay(day);
+      if (date.getDate() === 1) addTick(day, 0, 'month', MONTHS[date.getMonth()]);
+    }
+  }
+  return ticks;
 }
 
 function drawChart() {
@@ -1042,8 +1095,6 @@ function drawChart() {
   plot = pl;
 
   const sp = spanV();
-  const visibleDays = sp * DAYS_PER_YEAR;
-  const mode = visibleDays <= 3 ? 'hour' : (visibleDays <= 70 ? 'day' : 'month');
   let yMin = 0, yMax = 1;
   if (yr.rooftop) {
     yMin = 0; yMax = 0;
@@ -1067,13 +1118,22 @@ function drawChart() {
     ctx.fillText(yr.rooftop ? nf(tickValue) : tickValue.toFixed(2), pl.left - 8, y);
   }
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  for (let i = 0; i <= 6; i++) {
-    const frac = i / 6, x = pl.left + pl.w * frac, pos = viewMin + sp * frac;
-    ctx.strokeStyle = 'rgba(90,110,140,0.10)';
+  const gridStyles = {
+    month: { stroke:'rgba(73,91,120,0.25)', width:1.4 },
+    week:  { stroke:'rgba(90,110,140,0.13)', width:1 },
+    day:   { stroke:'rgba(90,110,140,0.18)', width:1.1 },
+    hour:  { stroke:'rgba(90,110,140,0.08)', width:1 },
+  };
+  buildTimeGridTicks(yr, viewMin, viewMax).forEach(tick => {
+    const x = pl.left + ((tick.pos - viewMin) / sp) * pl.w;
+    const style = gridStyles[tick.kind];
+    ctx.strokeStyle = style.stroke; ctx.lineWidth = style.width;
     ctx.beginPath(); ctx.moveTo(x, pl.top); ctx.lineTo(x, pl.bottom); ctx.stroke();
-    ctx.fillStyle = 'rgba(90,106,134,0.85)';
-    ctx.fillText(xLabelFor(pos, yr, mode), x, pl.bottom + 8);
-  }
+    if (tick.label) {
+      ctx.fillStyle = tick.kind === 'month' ? 'rgba(66,83,110,0.94)' : 'rgba(90,106,134,0.85)';
+      ctx.fillText(tick.label, x, pl.bottom + 8);
+    }
+  });
 
   ctx.save();
   ctx.beginPath(); ctx.rect(pl.left, pl.top, pl.w, pl.h); ctx.clip();
@@ -1242,5 +1302,6 @@ if (typeof module !== 'undefined' && module.exports) {
     parseTimeMinutes,
     setSummaryPeriod,
     setupChart,
+    buildTimeGridTicks,
   };
 }

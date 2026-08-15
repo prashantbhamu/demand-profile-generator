@@ -31,7 +31,17 @@ class StaticBrandAssetTests(unittest.TestCase):
         text = body.decode("utf-8")
         self.assertEqual(content_type, "text/html")
         self.assertIn("<title>PRISM</title>", text)
-        self.assertIn("Power-demand Reconstruction, Integration and Scaling Model", text)
+        self.assertIn("Power-demand Reconstruction, Integration &amp; Scaling Model", text)
+        self.assertIn(
+            '<span class="prism-initial">R</span>'
+            '<span class="prism-suffix">econstruction,</span>',
+            text,
+        )
+        self.assertIn(
+            '<span class="prism-joiner">&amp;</span>'
+            '<span class="prism-initial">S</span>',
+            text,
+        )
         self.assertIn(
             "Create future grid-demand profiles from peak and energy targets, "
             "with optional rooftop solar adjustment.",
@@ -50,6 +60,14 @@ class StaticBrandAssetTests(unittest.TestCase):
                 actual, body = self.fetch(path)
                 self.assertEqual(actual, content_type)
                 self.assertTrue(body)
+
+    def test_prism_mark_uses_fifteen_percent_shorter_trajectories(self) -> None:
+        _, body = self.fetch("/prism-logo.svg")
+        text = body.decode("utf-8")
+        self.assertIn('id="prism-input-trajectory" d="M25.4 92', text)
+        for output_id in range(1, 4):
+            self.assertIn(f'id="prism-output-trajectory-{output_id}"', text)
+        self.assertEqual(text.count("306.2"), 3)
 
 
 if __name__ == "__main__":

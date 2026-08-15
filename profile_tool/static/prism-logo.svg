@@ -15,14 +15,14 @@
     }
   </style>
   <g id="prism-mark" fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M8 92 C42 96 54 95 72 83 C91 70 105 66 124 78" stroke="#2457d6" stroke-width="7"/>
+    <path id="prism-input-trajectory" d="M25.4 92 C54.3 96 64.5 95 79.8 83 C95.9 70 107.9 66 124 78" stroke="#2457d6" stroke-width="7"/>
     <path d="M134 30 L209 70 L192 116 L134 145 Z" fill="#ffffff" stroke="#0c1d43" stroke-width="5"/>
     <path d="M134 30 L173 86 L209 70 Z" fill="#0c1d43" stroke="#0c1d43" stroke-width="4"/>
     <path d="M173 86 L209 70 L192 116 L134 145 Z" fill="#c7d4f7" stroke="#0c1d43" stroke-width="4"/>
     <path d="M134 30 L173 86 L134 145" stroke="#0c1d43" stroke-width="5"/>
-    <path d="M228 73 C246 76 257 77 274 69 C288 62 301 58 320 62" stroke="#2e63e6" stroke-width="7"/>
-    <path d="M228 96 C246 99 257 100 274 94 C289 89 302 85 320 90" stroke="#7561dc" stroke-width="7"/>
-    <path d="M228 119 C246 123 258 126 275 121 C292 116 304 113 320 118" stroke="#25aa91" stroke-width="7"/>
+    <path id="prism-output-trajectory-1" d="M228 73 C243.3 76 252.7 77 267.1 69 C279 62 290.1 58 306.2 62" stroke="#2e63e6" stroke-width="7"/>
+    <path id="prism-output-trajectory-2" d="M228 96 C243.3 99 252.7 100 267.1 94 C279.9 89 290.9 85 306.2 90" stroke="#7561dc" stroke-width="7"/>
+    <path id="prism-output-trajectory-3" d="M228 119 C243.3 123 253.5 126 267.9 121 C282.4 116 292.6 113 306.2 118" stroke="#25aa91" stroke-width="7"/>
   </g>
   <text class="prism-wordmark" x="370" y="128">PRISM</text>
 </svg>

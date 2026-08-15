@@ -23,7 +23,7 @@
 - Spacing and layout rhythm: the mark-to-wordmark ratio, compact horizontal silhouette, subtitle gap, and reserved header height are consistent with the source and existing app. Subtitle, status pill, and workflow card bounding boxes remain unchanged between collapsed and expanded desktop states.
 - Colors and visual tokens: navy prism outlines and wordmark, blue input trajectory, and indigo/violet/jade output trajectories match the selected direction and reuse the app's cool palette.
 - Image quality and asset fidelity: the canonical asset is transparent vector SVG, with the same prism geometry and palette reused by the interactive header. It remains sharp at desktop and narrow sizes.
-- Copy and content: browser title is `PRISM`; the subtitle and the full “Power-demand Reconstruction, Integration and Scaling Model” expansion match the approved wording.
+- Copy and content: browser title is `PRISM`; the subtitle and the full “Power-demand Reconstruction, Integration & Scaling Model” expansion match the approved wording.
 
 ## Interaction and browser checks
 
@@ -53,5 +53,38 @@
 - [x] Expansion, immediate reversal, timed retraction, and keyboard activation work.
 - [x] Desktop and narrow states preserve surrounding layout.
 - [x] Browser console is clean.
+
+Prior result: passed
+
+## Follow-up QA — Issue #9
+
+### Evidence and normalization
+
+- Source visual truth: `browser:comment-1` and `browser:comment-2` attached to the Issue #9 follow-up request, plus the canonical selected logo at `C:\Users\hp\.codex\generated_images\01a00144-aa0c-7353-a60d-6b33754e8c45\exec-5e86b418-2ffd-4cfd-9092-d9ad22f254a5.png`.
+- 789 px collapsed implementation: `C:\Users\hp\.codex\visualizations\2026\08\14\01a00144-aa0c-7353-a60d-6b33754e8c45\prism-ui-qa\issue-9\implementation-789-collapsed.png`.
+- 789 px expanded implementation: `C:\Users\hp\.codex\visualizations\2026\08\14\01a00144-aa0c-7353-a60d-6b33754e8c45\prism-ui-qa\issue-9\implementation-789-expanded.png`.
+- 390 px expanded implementation: `C:\Users\hp\.codex\visualizations\2026\08\14\01a00144-aa0c-7353-a60d-6b33754e8c45\prism-ui-qa\issue-9\implementation-390-expanded.png`.
+- Combined focused comparison: `C:\Users\hp\.codex\visualizations\2026\08\14\01a00144-aa0c-7353-a60d-6b33754e8c45\prism-ui-qa\issue-9\comparison-followup.png`.
+- Desktop-like browser evidence was captured at a 789 × 912 CSS viewport as 779 × 900 pixels. Narrow evidence was captured at a 390 × 844 CSS viewport as 380 × 822 pixels. Density was 1; the 10 px difference is browser scrollbar/chrome exclusion.
+- States: initial upload workflow, light theme, collapsed and fully expanded PRISM wordmark.
+
+### Required fidelity surfaces
+
+- Fonts and typography: the ampersand uses the same 600-weight Manrope secondary style as the expansion suffixes. It is hidden when collapsed and sits directly before the emphasized `S` when expanded.
+- Spacing and layout rhythm: the 15% line shortening affects only the outer trajectory endpoints. Prism geometry, mark slot, wordmark, subtitle and workflow placement remain unchanged. A reserved medium-width status row prevents the longer expansion from colliding at the annotated 789 px viewport.
+- Colors and visual tokens: all existing navy, blue, violet and jade tokens are unchanged.
+- Image quality and asset fidelity: the canonical SVG remains transparent and vector-sharp. The incoming curve span changes from 116 to 98.6 SVG units and every outgoing curve span changes from 92 to 78.2 units—exactly 15% shorter.
+- Copy and content: expanded copy now reads “Power-demand Reconstruction, Integration & Scaling Model”; the ampersand is also present in accessible fallback text.
+
+### Comparison history and findings
+
+1. Browser Comment 1 identified the missing ampersand; it was added in secondary typography.
+2. Browser Comment 2 requested 15% shorter lines on both sides; SVG trajectory coordinates were recalculated around the prism-facing endpoints.
+3. First 789 px verification found the additional glyph could overflow toward the status pill. The medium-width header now gives the pill a separate reserved row.
+4. First narrow verification placed the ampersand in a separate grid column, leaving it visually detached from `Scaling`. It was moved inside the Scaling term and reverified at 390 px.
+5. Specification review caught a missing visible comma after “Reconstruction”; it was added and the visible-wordmark assertion was strengthened.
+6. Final 789 px and 390 px captures show no overlap, clipping or horizontal document overflow. The application console is clean.
+
+- No actionable P0, P1 or P2 findings remain.
 
 final result: passed

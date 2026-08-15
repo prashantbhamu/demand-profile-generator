@@ -378,6 +378,17 @@ button, input { font: inherit; }
   transform: translateX(-7px);
   transition: max-width .6s cubic-bezier(.4,0,.2,1), opacity .3s ease, transform .5s cubic-bezier(.4,0,.2,1);
 }
+.prism-joiner {
+  display: inline-block;
+  align-self: baseline;
+  max-width: 0;
+  overflow: hidden;
+  color: #52627c;
+  font: 600 15px/1.2 'Manrope', sans-serif;
+  opacity: 0;
+  transform: translateX(-7px);
+  transition: max-width .6s cubic-bezier(.4,0,.2,1), margin .42s cubic-bezier(.4,0,.2,1), opacity .3s ease, transform .5s cubic-bezier(.4,0,.2,1);
+}
 .prism-brand[data-expanded="true"] .prism-term { margin-right: 12px; }
 .prism-brand[data-expanded="true"] .prism-term:last-child { margin-right: 0; }
 .prism-brand[data-expanded="true"] .prism-initial {
@@ -386,6 +397,12 @@ button, input { font: inherit; }
 }
 .prism-brand[data-expanded="true"] .prism-suffix {
   max-width: 13ch;
+  opacity: 1;
+  transform: none;
+}
+.prism-brand[data-expanded="true"] .prism-joiner {
+  max-width: 1em;
+  margin-right: 6px;
   opacity: 1;
   transform: none;
 }
@@ -678,6 +695,12 @@ button, input { font: inherit; }
   .step-col  { flex-direction: row; }
   .step-line { width: 30px; height: 2px; margin: 0 6px; }
 }
+@media (min-width: 701px) and (max-width: 1000px) {
+  .app-header { position: relative; display: block; }
+  .app-header .status-pill { position: absolute; top: 72px; right: 0; }
+  .prism-brand-stage { height: 112px; }
+  .app-subtitle { margin-top: 0; }
+}
 @media (max-width: 700px) {
   .shell { width: calc(100vw - 28px); padding: 20px 0 40px; }
   .app-header { position: relative; display: block; margin-bottom: 20px; }
@@ -693,6 +716,7 @@ button, input { font: inherit; }
     white-space: normal;
   }
   .prism-brand[data-expanded="true"] .prism-term { margin-right: 7px; }
+  .prism-brand[data-expanded="true"] .prism-joiner { margin-right: 4px; font-size: 10px; }
   .prism-brand[data-expanded="true"] .prism-initial { font-size: 20px; }
   .prism-brand[data-expanded="true"] .prism-suffix { font-size: 10px; }
   .app-subtitle { max-width: 100%; margin-top: 0; padding-right: 0; font-size: 13.5px; }
@@ -772,6 +796,7 @@ button, input { font: inherit; }
   .prism-brand { left: 86px; max-width: calc(100% - 86px); }
   .prism-initial { font-size: 30px; }
   .prism-brand[data-expanded="true"] .prism-term { margin-right: 4px; }
+  .prism-brand[data-expanded="true"] .prism-joiner { margin-right: 3px; font-size: 8px; }
   .prism-brand[data-expanded="true"] .prism-initial { font-size: 17px; }
   .prism-brand[data-expanded="true"] .prism-suffix { font-size: 8px; }
 }

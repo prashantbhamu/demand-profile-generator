@@ -73,6 +73,8 @@ class YearSummary:
     rooftop_effective_cuf_percent: float | None = None
     rooftop_year_end_capacity_mw: float | None = None
     adjusted_minimum_mw: float | None = None
+    unadjusted_peak_date: str | None = None
+    unadjusted_peak_period: int | None = None
     adjusted_peak_date: str | None = None
     adjusted_peak_period: int | None = None
 
@@ -611,16 +613,9 @@ def load_rooftop_profile(path: Path | str, mode: str) -> RooftopProfile:
     )
     cf_col = _find_alias_column(
         fieldnames,
-        (
-            "Rooftop CF",
-            "CF",
-            "Capacity Factor",
-            "PU",
-            "Per Unit",
-            "Normalized Generation",
-        ),
+        ("Normalized value (p.u.)",),
         path,
-        "Rooftop CF",
+        "Normalized value (p.u.)",
     )
     month_col = None
     day_col = None
@@ -638,7 +633,8 @@ def load_rooftop_profile(path: Path | str, mode: str) -> RooftopProfile:
         cf = _as_float(row.get(cf_col, ""), f"{path.name} line {line_number} {cf_col}")
         if not 0 <= cf <= 1:
             raise ProfileGenerationError(
-                f"{path.name} line {line_number} Rooftop CF must be between 0 and 1."
+                f"{path.name} line {line_number} Normalized value (p.u.) "
+                "must be between 0 and 1."
             )
         if mode == "daily":
             key = (period,)
@@ -1335,9 +1331,20 @@ def generate_profiles(
                 if rooftop_generation is None
                 else sum(rooftop_generation) * interval_hours / 1000.0
             )
-            peak_index = max(range(len(final_values)), key=final_values.__getitem__)
-            peak_date = projection_dates[peak_index // periods_per_day]
-            peak_period = peak_index % periods_per_day + 1
+            unadjusted_peak_index = max(
+                range(len(projected)), key=projected.__getitem__
+            )
+            unadjusted_peak_date = projection_dates[
+                unadjusted_peak_index // periods_per_day
+            ]
+            unadjusted_peak_period = unadjusted_peak_index % periods_per_day + 1
+            adjusted_peak_index = max(
+                range(len(final_values)), key=final_values.__getitem__
+            )
+            adjusted_peak_date = projection_dates[
+                adjusted_peak_index // periods_per_day
+            ]
+            adjusted_peak_period = adjusted_peak_index % periods_per_day + 1
             year_end_capacity = (
                 None
                 if rooftop_trajectory is None
@@ -1391,8 +1398,18 @@ def generate_profiles(
                     adjusted_minimum_mw=(
                         float(min(final_values)) if rooftop_enabled else None
                     ),
-                    adjusted_peak_date=(peak_date.isoformat() if rooftop_enabled else None),
-                    adjusted_peak_period=(peak_period if rooftop_enabled else None),
+                    unadjusted_peak_date=(
+                        unadjusted_peak_date.isoformat() if rooftop_enabled else None
+                    ),
+                    unadjusted_peak_period=(
+                        unadjusted_peak_period if rooftop_enabled else None
+                    ),
+                    adjusted_peak_date=(
+                        adjusted_peak_date.isoformat() if rooftop_enabled else None
+                    ),
+                    adjusted_peak_period=(
+                        adjusted_peak_period if rooftop_enabled else None
+                    ),
                 )
             )
             graph_year = {
@@ -1410,11 +1427,11 @@ def generate_profiles(
                 graph_year.update(
                     {
                         "before_rooftop": {
-                            "label": "Before rooftop",
+                            "label": "Unadjusted demand",
                             "points": projected,
                         },
                         "adjusted": {
-                            "label": "Adjusted grid demand",
+                            "label": "Adjusted demand",
                             "points": adjusted_values,
                         },
                         "rooftop_generation": {
@@ -1515,6 +1532,8 @@ def summaries_as_dicts(
                 "rooftop_effective_cuf_percent": item.rooftop_effective_cuf_percent,
                 "rooftop_year_end_capacity_mw": item.rooftop_year_end_capacity_mw,
                 "adjusted_minimum_mw": item.adjusted_minimum_mw,
+                "unadjusted_peak_date": item.unadjusted_peak_date,
+                "unadjusted_peak_period": item.unadjusted_peak_period,
                 "adjusted_peak_date": item.adjusted_peak_date,
                 "adjusted_peak_period": item.adjusted_peak_period,
             }

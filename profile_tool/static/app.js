@@ -308,7 +308,7 @@ async function validateRooftopProfile() {
     if (validationToken !== state.rooftopValidationToken) return;
     state.rooftopProfileValidation = {
       status:'valid',
-      message:`✓ ${nf(data.row_count)} rows · ${data.periods_per_day} periods/day · Template CUF ${nf(data.template_cuf_percent, 2)}%`,
+      message:`✓ ${nf(data.row_count)} rows · ${data.periods_per_day} periods/day · Profile CUF ${nf(data.template_cuf_percent, 2)}%`,
       data,
     };
   } catch (error) {
@@ -571,11 +571,9 @@ function populateResults(data) {
   const rooftop = !!first.rooftop_enabled;
 
   // Metrics
-  const minimum = rooftop && sums.length ? Math.min(...sums.map(s => Number(s.adjusted_minimum_mw))) : null;
   const metricData = rooftop ? [
     { label: 'Projection span', value: sums.length ? `${fyOf(first)} → ${fyOf(last)}` : '—' },
-    { label: 'Template CUF', value: `${nf(first.rooftop_template_cuf_percent, 2)}%` },
-    { label: minimum < 0 ? 'Minimum · Net export' : 'Minimum demand', value: `${nf(minimum)} MW`, negative: minimum < 0 },
+    { label: 'Profile CUF', value: `${nf(first.rooftop_template_cuf_percent, 2)}%` },
     { label: 'Output file', value: shortPath(data.output_path) },
   ] : [
     { label: 'Rows written', value: nf(data.rows_written) },
@@ -592,41 +590,59 @@ function populateResults(data) {
 
   // Summary table
   if (rooftop) {
-    document.getElementById('summary-head').innerHTML = `<tr>
-      <th>Financial year</th><th>Before peak MW</th><th>Adjusted peak MW</th>
-      <th>Peak reduction</th><th>Before energy GWh</th><th>Adjusted energy GWh</th>
-      <th>Rooftop GWh</th><th>Template CUF</th><th>Effective CUF</th>
-      <th>FY-end capacity MW</th><th>Minimum MW</th><th>Adjusted peak interval</th>
-    </tr>`;
+    document.getElementById('summary-head').innerHTML = `
+      <tr class="summary-group-row">
+        <th class="summary-fy" rowspan="2">FY</th>
+        <th colspan="5">Peak</th>
+        <th colspan="3">Energy</th>
+        <th colspan="2">Adjusted profile</th>
+      </tr>
+      <tr>
+        <th>Unadjusted peak</th><th>Unadjusted peak timing</th>
+        <th>Adjusted peak</th><th>Adjusted peak timing</th><th>Peak reduction</th>
+        <th>Unadjusted energy</th><th>Adjusted energy</th><th>Rooftop generation</th>
+        <th>Minimum demand</th><th>Projected CUF</th>
+      </tr>`;
     document.getElementById('summary-tbody').innerHTML = sums.map(s => {
       const negative = Number(s.adjusted_minimum_mw) < 0;
       return `<tr>
-        <td>${fyOf(s)}</td>
-        <td>${nf(s.before_rooftop_peak_mw)}</td>
-        <td>${nf(s.achieved_peak_mw)}</td>
-        <td>${nf(s.peak_reduction_mw)} MW · ${nf(s.peak_reduction_percent, 2)}%</td>
-        <td>${nf(s.before_rooftop_energy_gwh, 3)}</td>
-        <td>${nf(s.achieved_energy_gwh, 3)}</td>
-        <td>${nf(s.rooftop_generation_gwh, 3)}</td>
-        <td>${nf(s.rooftop_template_cuf_percent, 2)}%</td>
-        <td>${s.rooftop_effective_cuf_percent == null ? 'N/A' : `${nf(s.rooftop_effective_cuf_percent, 2)}%`}</td>
-        <td>${nf(s.rooftop_year_end_capacity_mw)}</td>
-        <td class="${negative ? 'negative-value' : ''}">${nf(s.adjusted_minimum_mw)}${negative ? ' · Net export' : ''}</td>
-        <td>${formatPeakInterval(s.adjusted_peak_date, s.adjusted_peak_period, s.periods_per_day)}</td>
+        <td class="summary-fy" data-label="FY">${fyOf(s)}</td>
+        <td data-label="Unadjusted peak">${nf(s.before_rooftop_peak_mw)} MW</td>
+        <td data-label="Unadjusted peak timing">${formatPeakIntervalCell(s.unadjusted_peak_date, s.unadjusted_peak_period, s.periods_per_day)}</td>
+        <td data-label="Adjusted peak">${nf(s.achieved_peak_mw)} MW</td>
+        <td data-label="Adjusted peak timing">${formatPeakIntervalCell(s.adjusted_peak_date, s.adjusted_peak_period, s.periods_per_day)}</td>
+        <td data-label="Peak reduction"><span class="peak-reduction-line"><span class="peak-reduction-value">${nf(s.peak_reduction_mw)} MW</span><span class="peak-reduction-percent">(${nf(s.peak_reduction_percent, 2)}%)</span></span></td>
+        <td data-label="Unadjusted energy">${nf(s.before_rooftop_energy_gwh)} GWh</td>
+        <td data-label="Adjusted energy">${nf(s.achieved_energy_gwh)} GWh</td>
+        <td data-label="Rooftop generation">${nf(s.rooftop_generation_gwh)} GWh</td>
+        <td data-label="Minimum demand" class="${negative ? 'negative-value' : ''}">${nf(s.adjusted_minimum_mw)} MW</td>
+        <td data-label="Projected CUF">${s.rooftop_effective_cuf_percent == null ? 'N/A' : `${nf(s.rooftop_effective_cuf_percent, 2)}%`}</td>
       </tr>`;
     }).join('');
   } else {
     document.getElementById('summary-head').innerHTML = `<tr>
-      <th>Financial year</th><th>Rows</th><th>Peak MW</th><th>Energy GWh</th><th>Peak YoY</th><th>Energy YoY</th>
+      <th class="summary-fy">FY</th><th>Rows</th><th>Peak</th><th>Energy</th><th>Peak YoY</th><th>Energy YoY</th>
     </tr>`;
     document.getElementById('summary-tbody').innerHTML = sums.map(s =>
       `<tr>
-        <td>${fyOf(s)}</td><td>${nf(s.row_count)}</td><td>${nf(s.achieved_peak_mw)}</td>
-        <td>${nf(s.achieved_energy_gwh, 3)}</td><td class="growth">${fmtPct(s.peak_growth_percent, 2)}</td>
-        <td class="growth">${fmtPct(s.energy_growth_percent, 2)}</td>
+        <td class="summary-fy" data-label="FY">${fyOf(s)}</td>
+        <td data-label="Rows">${nf(s.row_count)}</td>
+        <td data-label="Peak">${nf(s.achieved_peak_mw)} MW</td>
+        <td data-label="Energy">${nf(s.achieved_energy_gwh)} GWh</td>
+        <td data-label="Peak YoY" class="growth">${fmtPct(s.peak_growth_percent, 2)}</td>
+        <td data-label="Energy YoY" class="growth">${fmtPct(s.energy_growth_percent, 2)}</td>
       </tr>`
     ).join('');
   }
+  requestAnimationFrame(updateSummaryScrollHint);
+}
+
+function updateSummaryScrollHint() {
+  const hint = document.querySelector('.summary-scroll-hint');
+  const scroller = document.querySelector('.summary-table-scroll');
+  if (!hint || !scroller) return;
+  hint.hidden = window.matchMedia('(max-width: 700px)').matches ||
+    scroller.scrollWidth <= scroller.clientWidth + 1;
 }
 
 function formatPeakInterval(isoDate, period, periodsPerDay) {
@@ -634,6 +650,13 @@ function formatPeakInterval(isoDate, period, periodsPerDay) {
   const date = new Date(`${isoDate}T00:00:00`);
   const dateLabel = `${String(date.getDate()).padStart(2,'0')} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
   return `${dateLabel}, ${intervalRange(Number(period), Number(periodsPerDay))}`;
+}
+
+function formatPeakIntervalCell(isoDate, period, periodsPerDay) {
+  const formatted = formatPeakInterval(isoDate, period, periodsPerDay);
+  if (formatted === '—') return formatted;
+  const separator = formatted.indexOf(', ');
+  return `<span class="summary-timing"><span>${formatted.slice(0, separator)}</span><span class="summary-timing-time">${formatted.slice(separator + 2)}</span></span>`;
 }
 
 function copyOutputPath() {
@@ -663,9 +686,9 @@ function setupChart(graph) {
     projected:    rooftop ? y.adjusted.points : y.projected.points,
     rooftopGeneration: rooftop ? y.rooftop_generation.points : null,
   }));
-  document.getElementById('chart-title').textContent = rooftop ? 'Rooftop-adjusted profile view' : 'Normalized profile view';
+  document.getElementById('chart-title').textContent = rooftop ? 'Rooftop-adjusted demand profile' : 'Normalized profile view';
   document.getElementById('chart-legend').innerHTML = rooftop
-    ? `<span style="display:inline-flex;align-items:center;gap:7px;"><span style="width:18px;height:0;border-top:2px dashed #56637a;display:inline-block;"></span>Before rooftop</span>
+    ? `<span style="display:inline-flex;align-items:center;gap:7px;"><span style="width:18px;height:0;border-top:2px dashed #56637a;display:inline-block;"></span>Unadjusted demand</span>
        <span style="display:inline-flex;align-items:center;gap:7px;"><span style="width:18px;height:2px;background:#111827;display:inline-block;border-radius:2px;"></span>Adjusted demand</span>
        <span style="display:inline-flex;align-items:center;gap:7px;"><span style="width:18px;height:8px;background:rgba(245,190,36,.55);display:inline-block;border-radius:2px;"></span>Rooftop generation</span>`
     : `<span style="display:inline-flex;align-items:center;gap:7px;"><span style="width:18px;height:0;border-top:2px dashed #1b2740;display:inline-block;"></span>Mapped base</span>
@@ -853,7 +876,7 @@ function updateTooltip(x) {
   const header = `<div style="font-weight:700;color:#13203a;font-size:12.5px;margin-bottom:7px;">${dateLabel} · ${intervalRange(period, p)}</div>`;
   if (yr.rooftop) {
     tip.innerHTML = header +
-      `<div style="display:flex;justify-content:space-between;gap:18px;color:#5a6a86;"><span>Before rooftop</span><b style="font-family:'JetBrains Mono',monospace;color:#13203a;">${nf(yr.base[i])} MW</b></div>` +
+      `<div style="display:flex;justify-content:space-between;gap:18px;color:#5a6a86;"><span>Unadjusted demand</span><b style="font-family:'JetBrains Mono',monospace;color:#13203a;">${nf(yr.base[i])} MW</b></div>` +
       `<div style="display:flex;justify-content:space-between;gap:18px;color:#5a6a86;margin-top:4px;"><span>Rooftop generation</span><b style="font-family:'JetBrains Mono',monospace;color:#b6790a;">${nf(yr.rooftopGeneration[i])} MW</b></div>` +
       `<div style="display:flex;justify-content:space-between;gap:18px;color:#5a6a86;margin-top:4px;"><span>Adjusted demand</span><b style="font-family:'JetBrains Mono',monospace;color:${yr.projected[i] < 0 ? '#b42318' : '#111827'};">${nf(yr.projected[i])} MW</b></div>`;
   } else {
@@ -941,6 +964,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupFinancialYearInputs();
   setupInfoPopovers();
   setupChartInteractions();
+  window.addEventListener('resize', updateSummaryScrollHint);
   render();
 });
 
@@ -948,6 +972,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     intervalRange,
     formatPeakInterval,
+    formatPeakIntervalCell,
     populateResults,
     requiredFilesReady,
     setupChart,

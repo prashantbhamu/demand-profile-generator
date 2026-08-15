@@ -622,10 +622,20 @@ button, input { font: inherit; }
 }
 .summary-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 22px 10px; }
 .period-toggle { display: inline-flex; padding: 3px; border: 1px solid rgba(120,140,170,.25); border-radius: 12px; background: rgba(239,244,251,.74); }
-.period-toggle button { height: 34px; padding: 0 13px; border: 0; border-radius: 9px; background: transparent; color: #718096; font: 700 12px 'Manrope', sans-serif; cursor: pointer; }
+.period-toggle button { display: inline-flex; height: 34px; align-items: center; gap: 6px; padding: 0 13px; border: 0; border-radius: 9px; background: transparent; color: #718096; font: 700 12px 'Manrope', sans-serif; cursor: pointer; }
 .period-toggle button[aria-pressed="true"] { color: #13203a; background: rgba(255,255,255,.94); box-shadow: 0 4px 12px -6px rgba(30,52,98,.5); }
 .period-toggle #period-toggle-solar[aria-pressed="true"] { color: #b6790a; }
 .period-toggle #period-toggle-non-solar[aria-pressed="true"] { color: #34445f; }
+.period-icon { width: 16px; height: 16px; flex: none; }
+.period-icon-moon { color: #34445f; fill: currentColor; }
+.summary-table-section + .summary-table-section { border-top: 1px solid rgba(120,140,170,.18); }
+.summary-section-title {
+  padding: 10px 22px 9px;
+  color: #42536e;
+  font: 700 12px 'Manrope', sans-serif;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
 .summary-table-scroll {
   max-height: min(58vh, 520px);
   overflow: auto;
@@ -643,7 +653,8 @@ button, input { font: inherit; }
   border-collapse: separate;
   border-spacing: 0;
 }
-.summary-table:has(.summary-group-row) { min-width: 1320px; }
+.summary-table:has(.summary-group-row) { min-width: 1030px; }
+.summary-energy-table { min-width: 760px; }
 .summary-table th,
 .summary-table td {
   padding: 12px 15px;
@@ -777,7 +788,9 @@ button, input { font: inherit; }
   .summary-scroll-hint { display: none; }
   .summary-table-scroll { max-height: none; overflow: visible; padding: 0 12px 14px; }
   .summary-table,
-  .summary-table:has(.summary-group-row) { display: block; min-width: 0; }
+  .summary-table:has(.summary-group-row),
+  .summary-energy-table { display: block; min-width: 0; }
+  .summary-section-title { padding-inline: 20px; }
   .summary-table thead { display: none; }
   .summary-table tbody {
     display: grid;

@@ -53,7 +53,9 @@ assert.equal(requiredFilesReady(standardFiles, false, 'empty', 'empty', invalidC
 
 const elements = new Map([
   ['output-path-text', {}], ['metrics-grid', {}], ['summary-head', {}],
-  ['summary-tbody', {}], ['chart-title', {}], ['chart-legend', {}], ['year-chips', {}],
+  ['summary-tbody', {}], ['summary-peak-title', {hidden:true}],
+  ['summary-secondary-section', {hidden:true}], ['summary-energy-head', {}],
+  ['summary-energy-tbody', {}], ['chart-title', {}], ['chart-legend', {}], ['year-chips', {}],
 ]);
 global.document.getElementById = id => elements.get(id);
 global.requestAnimationFrame = () => {};
@@ -80,19 +82,25 @@ populateResults({output_path:'utility_rooftop_adjusted.csv', rows_written:35040,
 assert.match(elements.get('metrics-grid').innerHTML, /Profile CUF/);
 assert.doesNotMatch(elements.get('metrics-grid').innerHTML, /Minimum/);
 assert.match(elements.get('summary-head').innerHTML, /Overall peak/);
-assert.match(elements.get('summary-head').innerHTML, /Solar-period peak/);
-assert.match(elements.get('summary-head').innerHTML, /Projected CUF/);
+assert.match(elements.get('summary-head').innerHTML, /Peak during solar period/);
+assert.match(elements.get('summary-head').innerHTML, /Unadjusted timing/);
+assert.match(elements.get('summary-head').innerHTML, /Adjusted timing/);
+assert.doesNotMatch(elements.get('summary-head').innerHTML, /Before rooftop|After rooftop/);
+assert.match(elements.get('summary-energy-head').innerHTML, /Unadjusted energy/);
+assert.match(elements.get('summary-energy-head').innerHTML, /Projected CUF/);
 assert.doesNotMatch(elements.get('summary-head').innerHTML, /MW|GWh|Effective|FY-end/);
 assert.match(elements.get('summary-tbody').innerHTML, /2025-26/);
 assert.match(elements.get('summary-tbody').innerHTML, /250 MW/);
-assert.match(elements.get('summary-tbody').innerHTML, /1,000 GWh/);
+assert.match(elements.get('summary-energy-tbody').innerHTML, /1,000 GWh/);
 assert.match(elements.get('summary-tbody').innerHTML, /25 MW.*\(10\.00%\)/);
-assert.match(elements.get('summary-tbody').innerHTML, /negative-value/);
+assert.match(elements.get('summary-energy-tbody').innerHTML, /negative-value/);
 assert.doesNotMatch(elements.get('summary-tbody').innerHTML, /Net export/);
 assert.match(elements.get('summary-tbody').innerHTML, /17:45–18:00/);
+assert.equal(elements.get('summary-peak-title').hidden, false);
+assert.equal(elements.get('summary-secondary-section').hidden, false);
 
 setSummaryPeriod('non_solar');
-assert.match(elements.get('summary-head').innerHTML, /Non-solar-period peak/);
+assert.match(elements.get('summary-head').innerHTML, /Peak during non-solar period/);
 assert.match(elements.get('summary-tbody').innerHTML, /215 MW/);
 assert.match(elements.get('summary-tbody').innerHTML, /5 MW.*\(2\.27%\)/);
 assert.match(elements.get('summary-tbody').innerHTML, /18:00–18:15/);
@@ -106,11 +114,13 @@ populateResults({output_path:'utility_projected_demand.csv', rows_written:8760, 
   non_solar_peak_date:'2025-06-01', non_solar_peak_period:24,
   non_solar_peak_growth_percent:null,
 }]});
-assert.match(elements.get('summary-head').innerHTML, /Solar-period peak/);
+assert.match(elements.get('summary-head').innerHTML, /Peak during solar period/);
 assert.match(elements.get('summary-tbody').innerHTML, /220 MW/);
 assert.match(elements.get('summary-tbody').innerHTML, /17:00–18:00/);
+assert.equal(elements.get('summary-peak-title').hidden, true);
+assert.equal(elements.get('summary-secondary-section').hidden, true);
 setSummaryPeriod('non_solar');
-assert.match(elements.get('summary-head').innerHTML, /Non-solar-period peak/);
+assert.match(elements.get('summary-head').innerHTML, /Peak during non-solar period/);
 assert.match(elements.get('summary-tbody').innerHTML, /240 MW/);
 assert.match(elements.get('summary-tbody').innerHTML, /23:00–24:00/);
 

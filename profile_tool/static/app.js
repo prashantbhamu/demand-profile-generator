@@ -330,7 +330,7 @@ function renderSolarWindow() {
   endField.value = formatMinutes(state.solarEndMinutes);
   band.style.left = `${state.solarStartMinutes / 1440 * 100}%`;
   band.style.width = `${(state.solarEndMinutes - state.solarStartMinutes) / 1440 * 100}%`;
-  summary.textContent = `☀ Solar: ${formatMinutes(state.solarStartMinutes)}–${formatMinutes(state.solarEndMinutes)} · ◐ Non-solar: ${formatMinutes(state.solarEndMinutes)}–24:00 and 00:00–${formatMinutes(state.solarStartMinutes)} · ${step}-minute steps`;
+  summary.textContent = `☀ Solar: ${formatMinutes(state.solarStartMinutes)}–${formatMinutes(state.solarEndMinutes)} · ☾ Non-solar: ${formatMinutes(state.solarEndMinutes)}–24:00 and 00:00–${formatMinutes(state.solarStartMinutes)} · ${step}-minute steps`;
   error.textContent = solarWindowValidation();
 }
 
@@ -798,13 +798,13 @@ function populateResults(data) {
   // Summary table
   const periodViews = {
     solar: {
-      label:'Solar-period', peak:'solar_peak_mw', date:'solar_peak_date', period:'solar_peak_period',
+      label:'Solar period', peak:'solar_peak_mw', date:'solar_peak_date', period:'solar_peak_period',
       growth:'solar_peak_growth_percent', beforePeak:'before_rooftop_solar_peak_mw',
       beforeDate:'before_rooftop_solar_peak_date', beforePeriod:'before_rooftop_solar_peak_period',
       reduction:'solar_peak_reduction_mw', reductionPercent:'solar_peak_reduction_percent',
     },
     non_solar: {
-      label:'Non-solar-period', peak:'non_solar_peak_mw', date:'non_solar_peak_date', period:'non_solar_peak_period',
+      label:'Non-solar period', peak:'non_solar_peak_mw', date:'non_solar_peak_date', period:'non_solar_peak_period',
       growth:'non_solar_peak_growth_percent', beforePeak:'before_rooftop_non_solar_peak_mw',
       beforeDate:'before_rooftop_non_solar_peak_date', beforePeriod:'before_rooftop_non_solar_peak_period',
       reduction:'non_solar_peak_reduction_mw', reductionPercent:'non_solar_peak_reduction_percent',
@@ -824,33 +824,42 @@ function populateResults(data) {
   const reductionPercentKey = periodView.reductionPercent;
   document.getElementById('period-toggle-solar')?.setAttribute('aria-pressed', String(solar));
   document.getElementById('period-toggle-non-solar')?.setAttribute('aria-pressed', String(!solar));
+  const peakTitle = document.getElementById('summary-peak-title');
+  const secondarySection = document.getElementById('summary-secondary-section');
   if (rooftop) {
+    peakTitle.hidden = false;
+    secondarySection.hidden = false;
     document.getElementById('summary-head').innerHTML = `
       <tr class="summary-group-row">
         <th class="summary-fy" rowspan="2">FY</th>
         <th colspan="2">Overall peak</th>
-        <th colspan="5">${classLabel} peak</th>
-        <th colspan="3">Energy</th>
-        <th colspan="2">Adjusted profile</th>
+        <th colspan="5">Peak during ${classLabel.toLowerCase()}</th>
       </tr>
       <tr>
-        <th>Before rooftop</th><th>After rooftop</th>
-        <th>Before rooftop</th><th>Before timing</th>
-        <th>After rooftop</th><th>After timing</th><th>Reduction</th>
-        <th>Unadjusted energy</th><th>Adjusted energy</th><th>Rooftop generation</th>
-        <th>Minimum demand</th><th>Projected CUF</th>
+        <th>Unadjusted</th><th>Adjusted</th>
+        <th>Unadjusted peak</th><th>Unadjusted timing</th>
+        <th>Adjusted peak</th><th>Adjusted timing</th><th>Reduction</th>
       </tr>`;
     document.getElementById('summary-tbody').innerHTML = sums.map(s => {
+      return `<tr>
+        <td class="summary-fy" data-label="FY">${fyOf(s)}</td>
+        <td data-label="Overall peak — Unadjusted demand">${nf(s.before_rooftop_peak_mw)} MW</td>
+        <td data-label="Overall peak — Adjusted demand">${nf(s.achieved_peak_mw)} MW</td>
+        <td data-label="${classLabel} — Unadjusted peak">${nf(s[beforePeakKey])} MW</td>
+        <td data-label="${classLabel} — Unadjusted timing">${formatPeakIntervalCell(s[beforeDateKey], s[beforePeriodKey], s.periods_per_day)}</td>
+        <td data-label="${classLabel} — Adjusted peak" class="${Number(s[finalPeakKey]) < 0 ? 'negative-value' : ''}">${nf(s[finalPeakKey])} MW</td>
+        <td data-label="${classLabel} — Adjusted timing">${formatPeakIntervalCell(s[finalDateKey], s[finalPeriodKey], s.periods_per_day)}</td>
+        <td data-label="${classLabel} — Peak reduction"><span class="peak-reduction-line"><span class="peak-reduction-value">${nf(s[reductionKey])} MW</span><span class="peak-reduction-percent">(${nf(s[reductionPercentKey], 2)}%)</span></span></td>
+      </tr>`;
+    }).join('');
+    document.getElementById('summary-energy-head').innerHTML = `<tr>
+      <th class="summary-fy">FY</th><th>Unadjusted energy</th><th>Adjusted energy</th>
+      <th>Rooftop generation</th><th>Minimum demand</th><th>Projected CUF</th>
+    </tr>`;
+    document.getElementById('summary-energy-tbody').innerHTML = sums.map(s => {
       const negative = Number(s.adjusted_minimum_mw) < 0;
       return `<tr>
         <td class="summary-fy" data-label="FY">${fyOf(s)}</td>
-        <td data-label="Overall before rooftop peak">${nf(s.before_rooftop_peak_mw)} MW</td>
-        <td data-label="Overall after rooftop peak">${nf(s.achieved_peak_mw)} MW</td>
-        <td data-label="${classLabel} before rooftop peak">${nf(s[beforePeakKey])} MW</td>
-        <td data-label="${classLabel} before timing">${formatPeakIntervalCell(s[beforeDateKey], s[beforePeriodKey], s.periods_per_day)}</td>
-        <td data-label="${classLabel} after rooftop peak" class="${Number(s[finalPeakKey]) < 0 ? 'negative-value' : ''}">${nf(s[finalPeakKey])} MW</td>
-        <td data-label="${classLabel} after timing">${formatPeakIntervalCell(s[finalDateKey], s[finalPeriodKey], s.periods_per_day)}</td>
-        <td data-label="${classLabel} peak reduction"><span class="peak-reduction-line"><span class="peak-reduction-value">${nf(s[reductionKey])} MW</span><span class="peak-reduction-percent">(${nf(s[reductionPercentKey], 2)}%)</span></span></td>
         <td data-label="Unadjusted energy">${nf(s.before_rooftop_energy_gwh)} GWh</td>
         <td data-label="Adjusted energy">${nf(s.achieved_energy_gwh)} GWh</td>
         <td data-label="Rooftop generation">${nf(s.rooftop_generation_gwh)} GWh</td>
@@ -859,8 +868,10 @@ function populateResults(data) {
       </tr>`;
     }).join('');
   } else {
+    peakTitle.hidden = true;
+    secondarySection.hidden = true;
     document.getElementById('summary-head').innerHTML = `<tr>
-      <th class="summary-fy">FY</th><th>Rows</th><th>Overall peak</th><th>${classLabel} peak</th><th>${classLabel} timing</th><th>Energy</th><th>${classLabel} peak YoY</th><th>Energy YoY</th>
+      <th class="summary-fy">FY</th><th>Rows</th><th>Overall peak</th><th>Peak during ${classLabel.toLowerCase()}</th><th>${classLabel} timing</th><th>Energy</th><th>${classLabel} peak YoY</th><th>Energy YoY</th>
     </tr>`;
     document.getElementById('summary-tbody').innerHTML = sums.map(s =>
       `<tr>
@@ -885,11 +896,13 @@ function setSummaryPeriod(period) {
 }
 
 function updateSummaryScrollHint() {
-  const hint = document.querySelector('.summary-scroll-hint');
-  const scroller = document.querySelector('.summary-table-scroll');
-  if (!hint || !scroller) return;
-  hint.hidden = window.matchMedia('(max-width: 700px)').matches ||
-    scroller.scrollWidth <= scroller.clientWidth + 1;
+  document.querySelectorAll('.summary-table-section').forEach(section => {
+    const hint = section.querySelector('.summary-scroll-hint');
+    const scroller = section.querySelector('.summary-table-scroll');
+    if (!hint || !scroller) return;
+    hint.hidden = window.matchMedia('(max-width: 700px)').matches ||
+      scroller.scrollWidth <= scroller.clientWidth + 1;
+  });
 }
 
 function formatPeakInterval(isoDate, period, periodsPerDay) {

@@ -371,25 +371,43 @@
               </div>
               <div class="period-toggle" role="group" aria-label="Peak period view">
                 <button type="button" id="period-toggle-solar" aria-pressed="true" onclick="setSummaryPeriod('solar')"><span aria-hidden="true">☀</span> Solar</button>
-                <button type="button" id="period-toggle-non-solar" aria-pressed="false" onclick="setSummaryPeriod('non_solar')"><span aria-hidden="true">◐</span> Non-solar</button>
+                <button type="button" id="period-toggle-non-solar" aria-pressed="false" onclick="setSummaryPeriod('non_solar')">
+                  <svg class="period-icon period-icon-moon" aria-hidden="true" viewBox="0 0 20 20" focusable="false">
+                    <path d="M17 12.8A7.5 7.5 0 1 1 7.2 3A6 6 0 0 0 17 12.8Z"></path>
+                  </svg>
+                  Non-solar
+                </button>
               </div>
             </div>
-            <div class="summary-scroll-hint" aria-hidden="true" hidden>Scroll horizontally for more →</div>
-            <div class="summary-table-scroll">
-              <table class="summary-table">
-                <thead id="summary-head">
-                  <tr>
-                    <th>FY</th>
-                    <th>Rows</th>
-                    <th>Peak</th>
-                    <th>Energy</th>
-                    <th>Peak YoY</th>
-                    <th>Energy YoY</th>
-                  </tr>
-                </thead>
-                <tbody id="summary-tbody"></tbody>
-              </table>
-            </div>
+            <section class="summary-table-section">
+              <h4 class="summary-section-title" id="summary-peak-title" hidden>Peak demand</h4>
+              <div class="summary-scroll-hint" aria-hidden="true" hidden>Scroll horizontally for more →</div>
+              <div class="summary-table-scroll">
+                <table class="summary-table" id="summary-peak-table">
+                  <thead id="summary-head">
+                    <tr>
+                      <th>FY</th>
+                      <th>Rows</th>
+                      <th>Peak</th>
+                      <th>Energy</th>
+                      <th>Peak YoY</th>
+                      <th>Energy YoY</th>
+                    </tr>
+                  </thead>
+                  <tbody id="summary-tbody"></tbody>
+                </table>
+              </div>
+            </section>
+            <section class="summary-table-section summary-secondary-section" id="summary-secondary-section" hidden>
+              <h4 class="summary-section-title">Energy and adjusted profile</h4>
+              <div class="summary-scroll-hint" aria-hidden="true" hidden>Scroll horizontally for more →</div>
+              <div class="summary-table-scroll">
+                <table class="summary-table summary-energy-table">
+                  <thead id="summary-energy-head"></thead>
+                  <tbody id="summary-energy-tbody"></tbody>
+                </table>
+              </div>
+            </section>
           </div>
 
         </div><!-- /results-panel -->

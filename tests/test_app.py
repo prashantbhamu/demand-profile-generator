@@ -95,6 +95,8 @@ class StaticBrandAssetTests(unittest.TestCase):
             "with optional rooftop solar adjustment.",
             text,
         )
+        self.assertIn('class="period-icon period-icon-moon"', text)
+        self.assertNotIn("◐", text)
 
     def test_prism_assets_are_served_with_expected_types(self) -> None:
         expected = {

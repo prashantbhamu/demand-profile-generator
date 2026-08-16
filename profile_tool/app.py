@@ -461,12 +461,18 @@ class ProfileToolHandler(SimpleHTTPRequestHandler):
             with tempfile.TemporaryDirectory(prefix="demand_projection_tool_") as temp:
                 path = self._save_upload(form, "rooftop_trajectory", Path(temp))
                 trajectory = load_rooftop_trajectory(path)
+            coverage_valid = True
+            coverage_error = ""
+            try:
                 validate_rooftop_trajectory_coverage(
                     trajectory,
                     base_year,
                     projection_start_year,
                     projection_end_year,
                 )
+            except ProfileGenerationError as exc:
+                coverage_valid = False
+                coverage_error = str(exc)
         except (ProfileGenerationError, ValueError) as exc:
             self._send_json({"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
@@ -480,8 +486,12 @@ class ProfileToolHandler(SimpleHTTPRequestHandler):
             {
                 "ok": True,
                 "milestone_count": len(trajectory),
-                "baseline_capacity_mw": trajectory[base_year],
+                "baseline_capacity_mw": trajectory.get(base_year),
                 "final_capacity_mw": trajectory[max(trajectory)],
+                "first_year": min(trajectory),
+                "last_year": max(trajectory),
+                "coverage_valid": coverage_valid,
+                "coverage_error": coverage_error,
             }
         )
 

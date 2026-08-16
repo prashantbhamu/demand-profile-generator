@@ -167,6 +167,27 @@ class StaticBrandAssetTests(unittest.TestCase):
         self.assertFalse(payload["ok"])
         self.assertIn("DateTime", payload["error"])
 
+    def test_rooftop_trajectory_validation_separates_structure_from_coverage(self) -> None:
+        trajectory_csv = (
+            b"Financial Year,Cumulative MW\n"
+            b"2024-25,100\n"
+            b"2031-32,250\n"
+        )
+        status, payload = self.post_multipart(
+            "/validate-rooftop-trajectory",
+            {
+                "base_financial_year": "2024",
+                "projection_start_year": "2025",
+                "projection_end_year": "2034",
+            },
+            {"rooftop_trajectory": ("trajectory.csv", trajectory_csv)},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["milestone_count"], 2)
+        self.assertFalse(payload["coverage_valid"])
+        self.assertIn("2034-35", payload["coverage_error"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -108,10 +108,13 @@ function allFilesLoaded() {
 }
 
 function contextualFilesReady() {
-  return ['base','peak','energy'].every(key =>
+  const coreReady = ['base','peak','energy'].every(key =>
     state.coreValidation[key].status === 'valid' &&
     state.coreValidation[key].data?.coverage_valid === true
   );
+  if (!coreReady || !state.rooftopEnabled) return coreReady;
+  return state.rooftopTrajectoryValidation.status === 'valid' &&
+    state.rooftopTrajectoryValidation.data?.coverage_valid === true;
 }
 
 function solarWindowValidation() {
@@ -272,26 +275,26 @@ function renderRooftopControls() {
 function renderCoverageValidation() {
   const element = document.getElementById('coverage-validation');
   if (!element) return;
-  if (!['base','peak','energy'].every(key => state.coreValidation[key].status === 'valid')) {
+  const validationData = ['base','peak','energy'].map(key => state.coreValidation[key]);
+  if (state.rooftopEnabled) validationData.push(state.rooftopTrajectoryValidation);
+  if (!validationData.every(validation => validation.status === 'valid')) {
     element.className = 'coverage-validation';
     element.textContent = '';
     return;
   }
-  const pending = ['base','peak','energy'].some(
-    key => state.coreValidation[key].data?.coverage_valid == null
-  );
+  const pending = validationData.some(validation => validation.data?.coverage_valid == null);
   if (pending) {
     element.className = 'coverage-validation';
     element.textContent = 'Validating input coverage…';
     return;
   }
-  const errors = ['base','peak','energy']
-    .map(key => state.coreValidation[key].data?.coverage_error)
+  const errors = validationData
+    .map(validation => validation.data?.coverage_error)
     .filter(Boolean);
   element.className = `coverage-validation ${errors.length ? 'error' : 'valid'}`;
   element.textContent = errors.length
     ? `⚠ ${errors.join(' ')}`
-    : '✓ Base financial year and projection targets cover the configured run.';
+    : '✓ Input files cover the configured base year and projection span.';
 }
 
 function formatMinutes(total) {
@@ -525,7 +528,7 @@ async function validateRooftopTrajectory() {
     if (validationToken !== state.rooftopTrajectoryValidationToken) return;
     state.rooftopTrajectoryValidation = {
       status:'valid',
-      message:`✓ ${nf(data.milestone_count)} milestones · baseline ${nf(data.baseline_capacity_mw)} MW · final ${nf(data.final_capacity_mw)} MW`,
+      message:`✓ ${nf(data.milestone_count)} milestones · ${data.first_year}–${data.last_year} · final ${nf(data.final_capacity_mw)} MW`,
       data:{ ...data, signature },
     };
   } catch (error) {
@@ -831,7 +834,7 @@ function populateResults(data) {
     document.getElementById('summary-head').innerHTML = `
       <tr class="summary-group-row">
         <th class="summary-fy" rowspan="2">FY</th>
-        <th rowspan="2" title="Cumulative rooftop capacity at the end of the financial year">Cumulative rooftop capacity</th>
+        <th rowspan="2" title="Cumulative rooftop capacity at the end of the financial year">Rooftop capacity</th>
         <th colspan="2">Overall peak</th>
         <th colspan="5">Peak during ${classLabel.toLowerCase()}</th>
       </tr>
@@ -843,7 +846,7 @@ function populateResults(data) {
     document.getElementById('summary-tbody').innerHTML = sums.map(s => {
       return `<tr>
         <td class="summary-fy" data-label="FY">${fyOf(s)}</td>
-        <td data-label="Cumulative rooftop capacity">${nf(s.rooftop_year_end_capacity_mw)} MW</td>
+        <td data-label="Rooftop capacity">${nf(s.rooftop_year_end_capacity_mw)} MW</td>
         <td data-label="Overall peak — Unadjusted demand">${nf(s.before_rooftop_peak_mw)} MW</td>
         <td data-label="Overall peak — Adjusted demand">${nf(s.achieved_peak_mw)} MW</td>
         <td data-label="${classLabel} — Unadjusted peak">${nf(s[beforePeakKey])} MW</td>

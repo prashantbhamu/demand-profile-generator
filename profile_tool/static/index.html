@@ -104,10 +104,11 @@
                     <span>Base profile</span>
                     <span class="info-popover">
                       <span class="info-trigger" role="button" tabindex="0" aria-label="Base profile input format" aria-describedby="help-base" aria-expanded="false">i</span>
-                      <span class="info-balloon" id="help-base" role="tooltip">Upload a CSV or XLSX file. Data is accepted in either structure: Month, Day, Period and Demand columns, or one demand column arranged chronologically. Period represents intervals within a day: 1-24 for hourly or 1-96 for 15-minute data.</span>
+                      <span class="info-balloon" id="help-base" role="tooltip">Upload CSV or XLSX with either Month, Day, Period and one numeric demand column, or one numeric demand column arranged chronologically. Use a complete 365/366-day profile with exactly 24 or 96 periods/day. The tool validates the structure immediately and uses the detected resolution for the solar-period control.</span>
                     </span>
                   </div>
                   <div class="file-name" id="name-base">Drag &amp; drop or click to browse</div>
+                  <div class="file-validation" id="base-validation" aria-live="polite"></div>
                 </div>
                 <div style="font:600 11px 'JetBrains Mono',monospace;color:#9aa7bd;flex:none;" id="action-base">CSV / XLSX</div>
               </label>
@@ -120,10 +121,11 @@
                     <span>Peak projection</span>
                     <span class="info-popover">
                       <span class="info-trigger" role="button" tabindex="0" aria-label="Peak projection input format" aria-describedby="help-peak" aria-expanded="false">i</span>
-                      <span class="info-balloon" id="help-peak" role="tooltip">Upload a CSV or XLSX file with one row per projection year, a DateTime column containing a date, and a peak-demand column in MW.</span>
+                      <span class="info-balloon" id="help-peak" role="tooltip">Upload CSV or XLSX with one unique row per projection year, a DateTime column, and one positive numeric peak-demand column in MW. The tool validates structure immediately and checks year coverage against the projection span in Step 2.</span>
                     </span>
                   </div>
                   <div class="file-name" id="name-peak">Drag &amp; drop or click to browse</div>
+                  <div class="file-validation" id="peak-validation" aria-live="polite"></div>
                 </div>
                 <div style="font:600 11px 'JetBrains Mono',monospace;color:#9aa7bd;flex:none;" id="action-peak">CSV / XLSX</div>
               </label>
@@ -136,10 +138,11 @@
                     <span>Energy projection</span>
                     <span class="info-popover">
                       <span class="info-trigger" role="button" tabindex="0" aria-label="Energy projection input format" aria-describedby="help-energy" aria-expanded="false">i</span>
-                      <span class="info-balloon" id="help-energy" role="tooltip">Upload a CSV or XLSX file with one row per projection year, a DateTime column containing a date, and an energy-requirement column in GWh.</span>
+                      <span class="info-balloon" id="help-energy" role="tooltip">Upload CSV or XLSX with one unique row per projection year, a DateTime column, and one positive numeric energy-requirement column in GWh. The tool validates structure immediately and checks year coverage against the projection span in Step 2.</span>
                     </span>
                   </div>
                   <div class="file-name" id="name-energy">Drag &amp; drop or click to browse</div>
+                  <div class="file-validation" id="energy-validation" aria-live="polite"></div>
                 </div>
                 <div style="font:600 11px 'JetBrains Mono',monospace;color:#9aa7bd;flex:none;" id="action-energy">CSV / XLSX</div>
               </label>
@@ -247,6 +250,36 @@
               </div>
             </div>
 
+            <div class="coverage-validation" id="coverage-validation" aria-live="polite"></div>
+
+            <section class="solar-window-card" aria-labelledby="solar-window-title">
+              <div class="solar-window-heading">
+                <div>
+                  <div class="file-title-row">
+                    <span id="solar-window-title">Solar and non-solar periods</span>
+                    <span class="info-popover">
+                      <span class="info-trigger" role="button" tabindex="0" aria-label="Solar period definition" aria-describedby="help-solar-window" aria-expanded="false">i</span>
+                      <span class="info-balloon" id="help-solar-window" role="tooltip">The configured clock window classifies output rows and calculates separate demand peaks; it does not change scaling or require an input column. The output CSV adds Period classification immediately after period.</span>
+                    </span>
+                  </div>
+                  <p>Drag the boundaries or enter exact interval-aligned times.</p>
+                </div>
+                <div class="solar-window-fields">
+                  <label>Start<input id="solar-start-time" type="text" inputmode="numeric" value="06:00" maxlength="5" aria-label="Solar period start time"></label>
+                  <label>End<input id="solar-end-time" type="text" inputmode="numeric" value="18:00" maxlength="5" aria-label="Solar period end time"></label>
+                </div>
+              </div>
+              <div class="solar-timeline" aria-hidden="true">
+                <div class="solar-nonsolar-track"></div>
+                <div class="solar-active-band" id="solar-active-band"></div>
+                <input class="solar-range solar-range-start" id="solar-start-range" type="range" min="0" max="1440" step="60" value="360" tabindex="-1">
+                <input class="solar-range solar-range-end" id="solar-end-range" type="range" min="0" max="1440" step="60" value="1080" tabindex="-1">
+              </div>
+              <div class="solar-ticks" aria-hidden="true"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
+              <div class="solar-window-summary" id="solar-window-summary"></div>
+              <div class="field-error" id="solar-window-error" aria-live="polite"></div>
+            </section>
+
             <div style="display:flex;justify-content:space-between;margin-top:28px;">
               <button class="btn btn-ghost" onclick="goBack()">← Back</button>
               <button class="btn btn-primary" id="continue-2" onclick="goNext()" disabled>Continue →</button>
@@ -331,26 +364,50 @@
 
           <!-- Summary table -->
           <div class="summary-panel">
-            <div style="padding:18px 22px 10px;">
-              <div class="kicker">Year-by-year</div>
-              <h3 style="font-size:17px;font-weight:700;">Run summary</h3>
+            <div class="summary-panel-heading">
+              <div>
+                <div class="kicker">Year-by-year</div>
+                <h3 style="font-size:17px;font-weight:700;">Run summary</h3>
+              </div>
+              <div class="period-toggle" role="group" aria-label="Peak period view">
+                <button type="button" id="period-toggle-solar" aria-pressed="true" onclick="setSummaryPeriod('solar')"><span aria-hidden="true">☀</span> Solar</button>
+                <button type="button" id="period-toggle-non-solar" aria-pressed="false" onclick="setSummaryPeriod('non_solar')">
+                  <svg class="period-icon period-icon-moon" aria-hidden="true" viewBox="0 0 20 20" focusable="false">
+                    <path d="M17 12.8A7.5 7.5 0 1 1 7.2 3A6 6 0 0 0 17 12.8Z"></path>
+                  </svg>
+                  Non-solar
+                </button>
+              </div>
             </div>
-            <div class="summary-scroll-hint" aria-hidden="true" hidden>Scroll horizontally for more →</div>
-            <div class="summary-table-scroll">
-              <table class="summary-table">
-                <thead id="summary-head">
-                  <tr>
-                    <th>FY</th>
-                    <th>Rows</th>
-                    <th>Peak</th>
-                    <th>Energy</th>
-                    <th>Peak YoY</th>
-                    <th>Energy YoY</th>
-                  </tr>
-                </thead>
-                <tbody id="summary-tbody"></tbody>
-              </table>
-            </div>
+            <section class="summary-table-section">
+              <h4 class="summary-section-title" id="summary-peak-title" hidden>Peak demand</h4>
+              <div class="summary-scroll-hint" aria-hidden="true" hidden>Scroll horizontally for more →</div>
+              <div class="summary-table-scroll">
+                <table class="summary-table" id="summary-peak-table">
+                  <thead id="summary-head">
+                    <tr>
+                      <th>FY</th>
+                      <th>Rows</th>
+                      <th>Peak</th>
+                      <th>Energy</th>
+                      <th>Peak YoY</th>
+                      <th>Energy YoY</th>
+                    </tr>
+                  </thead>
+                  <tbody id="summary-tbody"></tbody>
+                </table>
+              </div>
+            </section>
+            <section class="summary-table-section summary-secondary-section" id="summary-secondary-section" hidden>
+              <h4 class="summary-section-title">Energy and adjusted profile</h4>
+              <div class="summary-scroll-hint" aria-hidden="true" hidden>Scroll horizontally for more →</div>
+              <div class="summary-table-scroll">
+                <table class="summary-table summary-energy-table">
+                  <thead id="summary-energy-head"></thead>
+                  <tbody id="summary-energy-tbody"></tbody>
+                </table>
+              </div>
+            </section>
           </div>
 
         </div><!-- /results-panel -->

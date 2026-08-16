@@ -50,7 +50,7 @@
   }
 
   function bindFinancialYearInput(input, errorElement, onValidityChange = () => {}) {
-    function showValidation(formatValue, showError) {
+    function showValidation(formatValue, showError, notify = true) {
       const result = parseFinancialYear(input.value);
       if (result.valid && formatValue) {
         input.value = result.label;
@@ -58,7 +58,7 @@
       input.setCustomValidity(result.error);
       input.setAttribute('aria-invalid', String(!result.valid));
       errorElement.textContent = showError ? result.error : '';
-      onValidityChange(result.valid);
+      if (notify) onValidityChange(result.valid);
       return result;
     }
 
@@ -76,7 +76,7 @@
     });
 
     return {
-      validate: () => showValidation(true, true),
+      validate: (notify = true) => showValidation(true, true, notify),
     };
   }
 

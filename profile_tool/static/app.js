@@ -13,7 +13,6 @@
 const ACCENT  = '#3b6ef6';
 const MONTHS  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const DEFAULT_PERIODS = 24;
-const DAYS_PER_YEAR   = 365;
 const {
   basePeriodForStartYear,
   bindFinancialYearInput,
@@ -29,6 +28,12 @@ const FINANCIAL_YEAR_FIELDS = {
 const state = {
   step: 1,
   files: { base: null, peak: null, energy: null, rooftopTrajectory: null, rooftopProfile: null }, // { name, file }
+  coreValidation: {
+    base: { status:'empty', message:'', data:null },
+    peak: { status:'empty', message:'', data:null },
+    energy: { status:'empty', message:'', data:null },
+  },
+  coreValidationTokens: { base:0, peak:0, energy:0 },
   rooftopEnabled: false,
   rooftopMode: 'daily',
   rooftopProfileValidation: { status: 'empty', message: '', data: null },
@@ -40,6 +45,12 @@ const state = {
   hasResults: false,
   outputPath: '',
   selYear: 0,
+  periodsPerDay: DEFAULT_PERIODS,
+  solarStartMinutes: 360,
+  solarEndMinutes: 1080,
+  solarInputError: '',
+  summaryPeriod: 'solar',
+  lastResults: null,
 };
 
 // ── Chart state ──────────────────────────────────────────────
@@ -75,8 +86,11 @@ function clampView(mn, mx) {
   if (mx > 1) { mx = 1; mn = 1 - span; }
   return [mn, mx];
 }
-function requiredFilesReady(files, rooftopEnabled, profileStatus, trajectoryStatus) {
-  const standard = !!(files.base && files.peak && files.energy);
+function requiredFilesReady(files, rooftopEnabled, profileStatus, trajectoryStatus, coreValidation = null) {
+  const coreValid = !coreValidation || ['base','peak','energy'].every(
+    key => coreValidation[key]?.status === 'valid'
+  );
+  const standard = !!(files.base && files.peak && files.energy && coreValid);
   if (!rooftopEnabled) return standard;
   return !!(
     standard && files.rooftopTrajectory && files.rooftopProfile &&
@@ -89,7 +103,33 @@ function allFilesLoaded() {
     state.rooftopEnabled,
     state.rooftopProfileValidation.status,
     state.rooftopTrajectoryValidation.status,
+    state.coreValidation,
   );
+}
+
+function contextualFilesReady() {
+  const coreReady = ['base','peak','energy'].every(key =>
+    state.coreValidation[key].status === 'valid' &&
+    state.coreValidation[key].data?.coverage_valid === true
+  );
+  if (!coreReady || !state.rooftopEnabled) return coreReady;
+  return state.rooftopTrajectoryValidation.status === 'valid' &&
+    state.rooftopTrajectoryValidation.data?.coverage_valid === true;
+}
+
+function solarWindowValidation() {
+  const step = 1440 / (state.periodsPerDay || DEFAULT_PERIODS);
+  if (state.solarInputError) return state.solarInputError;
+  if (!(0 <= state.solarStartMinutes && state.solarStartMinutes < state.solarEndMinutes && state.solarEndMinutes <= 1440)) {
+    return 'Use a same-day solar window with the start before the end.';
+  }
+  if (state.solarStartMinutes % step || state.solarEndMinutes % step) {
+    return `Boundaries must align to ${step}-minute intervals.`;
+  }
+  if (state.solarEndMinutes - state.solarStartMinutes >= 1440) {
+    return 'Solar and non-solar periods must each contain at least one interval.';
+  }
+  return '';
 }
 function intervalRange(period, periodsPerDay) {
   const minutesPerPeriod = 1440 / periodsPerDay;
@@ -116,7 +156,7 @@ function parsedFinancialYears() {
 function validateFinancialYearFields() {
   let valid = true;
   financialYearBindings.forEach(binding => {
-    valid = binding.validate().valid && valid;
+    valid = binding.validate(false).valid && valid;
   });
   const values = parsedFinancialYears();
   return valid && values.valid ? values : null;
@@ -127,7 +167,7 @@ function goNext() {
   if (state.step === 1 && !allFilesLoaded()) return;
   if (state.step === 2) {
     const financialYears = validateFinancialYearFields();
-    if (!state.outputFolder || !financialYears || !allFilesLoaded()) return;
+    if (!state.outputFolder || !financialYears || !allFilesLoaded() || !contextualFilesReady() || solarWindowValidation()) return;
   }
   if (state.step < 3) { state.step++; render(); }
 }
@@ -139,7 +179,7 @@ function goToStep(n) {
   if (state.hasResults || state.generating) return;
   if (n <= state.step) { state.step = n; render(); return; }
   if (n === 2 && allFilesLoaded())                          { state.step = 2; render(); return; }
-  if (n === 3 && allFilesLoaded() && state.outputFolder && validateFinancialYearFields()) {
+  if (n === 3 && allFilesLoaded() && contextualFilesReady() && !solarWindowValidation() && state.outputFolder && validateFinancialYearFields()) {
     state.step = 3; render();
   }
 }
@@ -150,6 +190,8 @@ function render() {
   renderSteps();
   renderFileTiles();
   renderRooftopControls();
+  renderCoverageValidation();
+  renderSolarWindow();
   renderPanels();
   renderButtons();
   if (state.step === 3 && !state.generating) renderReview();
@@ -194,10 +236,21 @@ function renderFileTiles() {
     const badge  = document.getElementById(`badge-${key}`);
     const action = document.getElementById(`action-${key}`);
     const f = state.files[key];
-    tile.dataset.loaded   = f ? 'true' : 'false';
-    badge.textContent     = f ? '✓' : ({ rooftopTrajectory:'T', rooftopProfile:'R' }[key] || key[0].toUpperCase());
+    const validation = ['base','peak','energy'].includes(key)
+      ? state.coreValidation[key]
+      : (key === 'rooftopProfile' ? state.rooftopProfileValidation : state.rooftopTrajectoryValidation);
+    const valid = !!f && validation.status === 'valid';
+    tile.dataset.loaded   = valid ? 'true' : 'false';
+    badge.textContent     = valid ? '✓' : ({ rooftopTrajectory:'T', rooftopProfile:'R' }[key] || key[0].toUpperCase());
     name.textContent      = f ? f.name : 'Drag & drop or click to browse';
     action.textContent    = f ? 'Replace' : 'CSV / XLSX';
+  });
+  ['base','peak','energy'].forEach(key => {
+    const element = document.getElementById(`${key}-validation`);
+    const validation = state.coreValidation[key];
+    if (!element) return;
+    element.className = `file-validation ${validation.status === 'valid' ? 'valid' : (validation.status === 'error' ? 'error' : '')}`;
+    element.textContent = validation.message;
   });
 }
 
@@ -217,6 +270,70 @@ function renderRooftopControls() {
     element.className = `rooftop-validation ${status === 'valid' ? 'valid' : (status === 'error' ? 'error' : '')}`;
     element.textContent = validation.message;
   });
+}
+
+function renderCoverageValidation() {
+  const element = document.getElementById('coverage-validation');
+  if (!element) return;
+  const validationData = ['base','peak','energy'].map(key => state.coreValidation[key]);
+  if (state.rooftopEnabled) validationData.push(state.rooftopTrajectoryValidation);
+  if (!validationData.every(validation => validation.status === 'valid')) {
+    element.className = 'coverage-validation';
+    element.textContent = '';
+    return;
+  }
+  const pending = validationData.some(validation => validation.data?.coverage_valid == null);
+  if (pending) {
+    element.className = 'coverage-validation';
+    element.textContent = 'Validating input coverage…';
+    return;
+  }
+  const errors = validationData
+    .map(validation => validation.data?.coverage_error)
+    .filter(Boolean);
+  element.className = `coverage-validation ${errors.length ? 'error' : 'valid'}`;
+  element.textContent = errors.length
+    ? `⚠ ${errors.join(' ')}`
+    : '✓ Input files cover the configured base year and projection span.';
+}
+
+function formatMinutes(total) {
+  if (total === 1440) return '24:00';
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
+  return `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}`;
+}
+
+function parseTimeMinutes(value) {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(String(value).trim());
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours === 24 && minutes === 0) return 1440;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+function renderSolarWindow() {
+  const startRange = document.getElementById('solar-start-range');
+  const endRange = document.getElementById('solar-end-range');
+  const startField = document.getElementById('solar-start-time');
+  const endField = document.getElementById('solar-end-time');
+  const band = document.getElementById('solar-active-band');
+  const summary = document.getElementById('solar-window-summary');
+  const error = document.getElementById('solar-window-error');
+  if (!startRange || !endRange || !startField || !endField || !band || !summary || !error) return;
+  const step = 1440 / (state.periodsPerDay || DEFAULT_PERIODS);
+  startRange.step = String(step);
+  endRange.step = String(step);
+  startRange.value = String(state.solarStartMinutes);
+  endRange.value = String(state.solarEndMinutes);
+  startField.value = formatMinutes(state.solarStartMinutes);
+  endField.value = formatMinutes(state.solarEndMinutes);
+  band.style.left = `${state.solarStartMinutes / 1440 * 100}%`;
+  band.style.width = `${(state.solarEndMinutes - state.solarStartMinutes) / 1440 * 100}%`;
+  summary.textContent = `☀ Solar: ${formatMinutes(state.solarStartMinutes)}–${formatMinutes(state.solarEndMinutes)} · ☾ Non-solar: ${formatMinutes(state.solarEndMinutes)}–24:00 and 00:00–${formatMinutes(state.solarStartMinutes)} · ${step}-minute steps`;
+  error.textContent = solarWindowValidation();
 }
 
 function renderPanels() {
@@ -239,7 +356,7 @@ function renderButtons() {
   const c2 = document.getElementById('continue-2');
   const b3 = document.getElementById('btn-back-3');
   if (c1) c1.disabled = !allFilesLoaded();
-  if (c2) c2.disabled = !state.outputFolder || !parsedFinancialYears().valid || !allFilesLoaded();
+  if (c2) c2.disabled = !state.outputFolder || !parsedFinancialYears().valid || !allFilesLoaded() || !contextualFilesReady() || !!solarWindowValidation();
   if (b3) b3.disabled = state.generating;
 }
 
@@ -255,6 +372,7 @@ function renderReview() {
     ...(state.rooftopEnabled ? [{ label: 'Scenario', value: `Rooftop adjustment · ${state.rooftopMode}`, style: 'font:700 13px Manrope,sans-serif;color:#b6790a;' }] : []),
     { label: 'Base financial year', value: financialYears.base.label, style: 'font:600 13px Manrope,sans-serif;color:#13203a;' },
     { label: 'Projection', value: `${financialYears.start.label} → ${financialYears.end.label} · ${Math.max(0, financialYears.end.startYear - financialYears.start.startYear + 1)} yrs`, style: 'font:600 13px Manrope,sans-serif;color:#13203a;' },
+    { label: 'Solar period', value: `${formatMinutes(state.solarStartMinutes)} → ${formatMinutes(state.solarEndMinutes)}`, style: 'font:700 13px Manrope,sans-serif;color:#b6790a;' },
     { label: 'Output file',  value: outputName, style: "font:600 12.5px 'JetBrains Mono',monospace;color:#42536e;" },
   ];
   container.innerHTML = rows.map(r =>
@@ -268,9 +386,16 @@ function renderReview() {
 // ── File handling ────────────────────────────────────────────
 function acceptFile(key, file) {
   state.files[key] = { name: file.name, file };
+  if (['base','peak','energy'].includes(key)) validateCoreFile(key);
   if (key === 'rooftopProfile') validateRooftopProfile();
   if (key === 'rooftopTrajectory') validateRooftopTrajectory();
   render();
+}
+
+function consumeSelectedFile(input) {
+  const file = input.files && input.files[0] ? input.files[0] : null;
+  if (file) input.value = '';
+  return file;
 }
 
 function setupFileTiles() {
@@ -278,9 +403,8 @@ function setupFileTiles() {
     const tile  = document.getElementById(`tile-${key}`);
     const input = document.getElementById(`input-${key}`);
     input.addEventListener('change', () => {
-      if (input.files && input.files[0]) {
-        acceptFile(key, input.files[0]);
-      }
+      const file = consumeSelectedFile(input);
+      if (file) acceptFile(key, file);
     });
     tile.addEventListener('dragover',  e => { e.preventDefault(); tile.dataset.dragging = 'true'; });
     tile.addEventListener('dragleave', e => { e.preventDefault(); tile.dataset.dragging = 'false'; });
@@ -289,6 +413,59 @@ function setupFileTiles() {
       const f = e.dataTransfer.files && e.dataTransfer.files[0];
       if (f) acceptFile(key, f);
     });
+  });
+}
+
+async function validateCoreFile(key) {
+  const uploaded = state.files[key];
+  if (!uploaded) return;
+  const financialYears = parsedFinancialYears();
+  if (!financialYears.valid) {
+    state.coreValidation[key] = {
+      status:'validating',
+      message:'Waiting for valid financial-year settings…',
+      data:null,
+    };
+    render();
+    return;
+  }
+  const validationToken = ++state.coreValidationTokens[key];
+  state.coreValidation[key] = { status:'validating', message:'Validating file…', data:null };
+  render();
+  const fd = new FormData();
+  let endpoint;
+  if (key === 'base') {
+    endpoint = '/validate-base-profile';
+    fd.append('base_profile', uploaded.file);
+    fd.append('base_financial_year', financialYears.base.startYear);
+  } else {
+    endpoint = '/validate-target-file';
+    fd.append(`${key}_projection`, uploaded.file);
+    fd.append('target_kind', key);
+    fd.append('projection_start_year', financialYears.start.startYear);
+    fd.append('projection_end_year', financialYears.end.startYear);
+    fd.append('profile_name', document.getElementById('f-profile')?.value || '');
+  }
+  try {
+    const response = await fetch(endpoint, { method:'POST', body:fd });
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.error || 'Input validation failed.');
+    if (validationToken !== state.coreValidationTokens[key]) return;
+    const message = key === 'base'
+      ? `✓ ${nf(data.row_count)} rows · ${data.periods_per_day} periods/day · value: ${data.value_column}`
+      : `✓ ${nf(data.row_count)} targets · ${data.first_year}–${data.last_year} · value: ${data.value_column}`;
+    state.coreValidation[key] = { status:'valid', message, data };
+    if (key === 'base') state.periodsPerDay = Number(data.periods_per_day) || DEFAULT_PERIODS;
+  } catch (error) {
+    if (validationToken !== state.coreValidationTokens[key]) return;
+    state.coreValidation[key] = { status:'error', message:`⚠ ${error.message}`, data:null };
+  }
+  render();
+}
+
+function revalidateCoreCoverage() {
+  ['base','peak','energy'].forEach(key => {
+    if (state.files[key]) validateCoreFile(key);
   });
 }
 
@@ -356,7 +533,7 @@ async function validateRooftopTrajectory() {
     if (validationToken !== state.rooftopTrajectoryValidationToken) return;
     state.rooftopTrajectoryValidation = {
       status:'valid',
-      message:`✓ ${nf(data.milestone_count)} milestones · baseline ${nf(data.baseline_capacity_mw)} MW · final ${nf(data.final_capacity_mw)} MW`,
+      message:`✓ ${nf(data.milestone_count)} milestones · ${data.first_year}–${data.last_year} · final ${nf(data.final_capacity_mw)} MW`,
       data:{ ...data, signature },
     };
   } catch (error) {
@@ -390,10 +567,43 @@ function setupFinancialYearInputs() {
     const error = document.getElementById(errorId);
     const binding = bindFinancialYearInput(input, error, () => {
       renderButtons();
+      revalidateCoreCoverage();
       if (state.files.rooftopTrajectory) validateRooftopTrajectory();
     });
     financialYearBindings.set(inputId, binding);
   });
+  document.getElementById('f-profile')?.addEventListener('change', () => {
+    ['peak','energy'].forEach(key => {
+      if (state.files[key]) validateCoreFile(key);
+    });
+  });
+}
+
+function setupSolarWindowControls() {
+  const startRange = document.getElementById('solar-start-range');
+  const endRange = document.getElementById('solar-end-range');
+  const startField = document.getElementById('solar-start-time');
+  const endField = document.getElementById('solar-end-time');
+  const setBoundary = (kind, minutes) => {
+    const step = 1440 / (state.periodsPerDay || DEFAULT_PERIODS);
+    const other = kind === 'start' ? state.solarEndMinutes : state.solarStartMinutes;
+    const validOrder = kind === 'start' ? minutes <= other - step : minutes >= other + step;
+    if (!Number.isFinite(minutes) || minutes < 0 || minutes > 1440 || minutes % step || !validOrder) {
+      state.solarInputError = `Enter interval-aligned times with at least one ${step}-minute interval in each period.`;
+      renderSolarWindow();
+      renderButtons();
+      return;
+    }
+    state.solarInputError = '';
+    if (kind === 'start') state.solarStartMinutes = minutes;
+    else state.solarEndMinutes = minutes;
+    renderSolarWindow();
+    renderButtons();
+  };
+  startRange.addEventListener('input', () => setBoundary('start', Number(startRange.value)));
+  endRange.addEventListener('input', () => setBoundary('end', Number(endRange.value)));
+  startField.addEventListener('change', () => setBoundary('start', parseTimeMinutes(startField.value)));
+  endField.addEventListener('change', () => setBoundary('end', parseTimeMinutes(endField.value)));
 }
 
 // ── Input format help ────────────────────────────────────────
@@ -488,7 +698,7 @@ async function chooseFolder() {
 async function runGenerate() {
   if (state.generating) return;
   const financialYears = validateFinancialYearFields();
-  if (!financialYears) return;
+  if (!financialYears || !contextualFilesReady() || solarWindowValidation()) return;
   const basePeriod = basePeriodForStartYear(financialYears.base.startYear);
   state.generating = true;
   render();
@@ -508,6 +718,8 @@ async function runGenerate() {
     fd.append('profile_name',         document.getElementById('f-profile').value);
     fd.append('output_folder',        state.outputFolder);
     fd.append('rooftop_enabled',      String(state.rooftopEnabled));
+    fd.append('solar_start_minutes',  state.solarStartMinutes);
+    fd.append('solar_end_minutes',    state.solarEndMinutes);
     if (state.rooftopEnabled) {
       fd.append('rooftop_profile_mode', state.rooftopMode);
       fd.append('rooftop_profile', state.files.rooftopProfile.file);
@@ -537,6 +749,7 @@ async function runGenerate() {
     state.outputPath  = data.output_path;
     state.hasResults  = true;
     state.generating  = false;
+    state.summaryPeriod = 'solar';
     render();                   // shows results panel
     populateResults(data);      // fill metrics + table
     setupChart(data.graph);     // draw chart
@@ -562,6 +775,7 @@ function setProgress(pct, label) {
 
 // ── Results population ───────────────────────────────────────
 function populateResults(data) {
+  state.lastResults = data;
   document.getElementById('output-path-text').textContent = data.output_path;
 
   const sums  = data.summaries || [];
@@ -589,29 +803,72 @@ function populateResults(data) {
   ).join('');
 
   // Summary table
+  const periodViews = {
+    solar: {
+      label:'Solar period', peak:'solar_peak_mw', date:'solar_peak_date', period:'solar_peak_period',
+      growth:'solar_peak_growth_percent', beforePeak:'before_rooftop_solar_peak_mw',
+      beforeDate:'before_rooftop_solar_peak_date', beforePeriod:'before_rooftop_solar_peak_period',
+      reduction:'solar_peak_reduction_mw', reductionPercent:'solar_peak_reduction_percent',
+    },
+    non_solar: {
+      label:'Non-solar period', peak:'non_solar_peak_mw', date:'non_solar_peak_date', period:'non_solar_peak_period',
+      growth:'non_solar_peak_growth_percent', beforePeak:'before_rooftop_non_solar_peak_mw',
+      beforeDate:'before_rooftop_non_solar_peak_date', beforePeriod:'before_rooftop_non_solar_peak_period',
+      reduction:'non_solar_peak_reduction_mw', reductionPercent:'non_solar_peak_reduction_percent',
+    },
+  };
+  const solar = state.summaryPeriod === 'solar';
+  const periodView = periodViews[state.summaryPeriod];
+  const classLabel = periodView.label;
+  const finalPeakKey = periodView.peak;
+  const finalDateKey = periodView.date;
+  const finalPeriodKey = periodView.period;
+  const growthKey = periodView.growth;
+  const beforePeakKey = periodView.beforePeak;
+  const beforeDateKey = periodView.beforeDate;
+  const beforePeriodKey = periodView.beforePeriod;
+  const reductionKey = periodView.reduction;
+  const reductionPercentKey = periodView.reductionPercent;
+  document.getElementById('period-toggle-solar')?.setAttribute('aria-pressed', String(solar));
+  document.getElementById('period-toggle-non-solar')?.setAttribute('aria-pressed', String(!solar));
+  const peakTitle = document.getElementById('summary-peak-title');
+  const secondarySection = document.getElementById('summary-secondary-section');
   if (rooftop) {
+    peakTitle.hidden = false;
+    secondarySection.hidden = false;
     document.getElementById('summary-head').innerHTML = `
       <tr class="summary-group-row">
         <th class="summary-fy" rowspan="2">FY</th>
-        <th colspan="5">Peak</th>
-        <th colspan="3">Energy</th>
-        <th colspan="2">Adjusted profile</th>
+        <th rowspan="2" title="Cumulative rooftop capacity at the end of the financial year">Rooftop capacity</th>
+        <th colspan="2">Overall peak</th>
+        <th colspan="5">Peak during ${classLabel.toLowerCase()}</th>
       </tr>
       <tr>
-        <th>Unadjusted peak</th><th>Unadjusted peak timing</th>
-        <th>Adjusted peak</th><th>Adjusted peak timing</th><th>Peak reduction</th>
-        <th>Unadjusted energy</th><th>Adjusted energy</th><th>Rooftop generation</th>
-        <th>Minimum demand</th><th>Projected CUF</th>
+        <th>Unadjusted</th><th>Adjusted</th>
+        <th>Unadjusted peak</th><th>Unadjusted timing</th>
+        <th>Adjusted peak</th><th>Adjusted timing</th><th>Reduction</th>
       </tr>`;
     document.getElementById('summary-tbody').innerHTML = sums.map(s => {
+      return `<tr>
+        <td class="summary-fy" data-label="FY">${fyOf(s)}</td>
+        <td data-label="Rooftop capacity">${nf(s.rooftop_year_end_capacity_mw)} MW</td>
+        <td data-label="Overall peak — Unadjusted demand">${nf(s.before_rooftop_peak_mw)} MW</td>
+        <td data-label="Overall peak — Adjusted demand">${nf(s.achieved_peak_mw)} MW</td>
+        <td data-label="${classLabel} — Unadjusted peak">${nf(s[beforePeakKey])} MW</td>
+        <td data-label="${classLabel} — Unadjusted timing">${formatPeakIntervalCell(s[beforeDateKey], s[beforePeriodKey], s.periods_per_day)}</td>
+        <td data-label="${classLabel} — Adjusted peak" class="${Number(s[finalPeakKey]) < 0 ? 'negative-value' : ''}">${nf(s[finalPeakKey])} MW</td>
+        <td data-label="${classLabel} — Adjusted timing">${formatPeakIntervalCell(s[finalDateKey], s[finalPeriodKey], s.periods_per_day)}</td>
+        <td data-label="${classLabel} — Peak reduction"><span class="peak-reduction-line"><span class="peak-reduction-value">${nf(s[reductionKey])} MW</span><span class="peak-reduction-percent">(${nf(s[reductionPercentKey], 2)}%)</span></span></td>
+      </tr>`;
+    }).join('');
+    document.getElementById('summary-energy-head').innerHTML = `<tr>
+      <th class="summary-fy">FY</th><th>Unadjusted energy</th><th>Adjusted energy</th>
+      <th>Rooftop generation</th><th>Minimum demand</th><th>Projected CUF</th>
+    </tr>`;
+    document.getElementById('summary-energy-tbody').innerHTML = sums.map(s => {
       const negative = Number(s.adjusted_minimum_mw) < 0;
       return `<tr>
         <td class="summary-fy" data-label="FY">${fyOf(s)}</td>
-        <td data-label="Unadjusted peak">${nf(s.before_rooftop_peak_mw)} MW</td>
-        <td data-label="Unadjusted peak timing">${formatPeakIntervalCell(s.unadjusted_peak_date, s.unadjusted_peak_period, s.periods_per_day)}</td>
-        <td data-label="Adjusted peak">${nf(s.achieved_peak_mw)} MW</td>
-        <td data-label="Adjusted peak timing">${formatPeakIntervalCell(s.adjusted_peak_date, s.adjusted_peak_period, s.periods_per_day)}</td>
-        <td data-label="Peak reduction"><span class="peak-reduction-line"><span class="peak-reduction-value">${nf(s.peak_reduction_mw)} MW</span><span class="peak-reduction-percent">(${nf(s.peak_reduction_percent, 2)}%)</span></span></td>
         <td data-label="Unadjusted energy">${nf(s.before_rooftop_energy_gwh)} GWh</td>
         <td data-label="Adjusted energy">${nf(s.achieved_energy_gwh)} GWh</td>
         <td data-label="Rooftop generation">${nf(s.rooftop_generation_gwh)} GWh</td>
@@ -620,16 +877,20 @@ function populateResults(data) {
       </tr>`;
     }).join('');
   } else {
+    peakTitle.hidden = true;
+    secondarySection.hidden = true;
     document.getElementById('summary-head').innerHTML = `<tr>
-      <th class="summary-fy">FY</th><th>Rows</th><th>Peak</th><th>Energy</th><th>Peak YoY</th><th>Energy YoY</th>
+      <th class="summary-fy">FY</th><th>Rows</th><th>Overall peak</th><th>Peak during ${classLabel.toLowerCase()}</th><th>${classLabel} timing</th><th>Energy</th><th>${classLabel} peak YoY</th><th>Energy YoY</th>
     </tr>`;
     document.getElementById('summary-tbody').innerHTML = sums.map(s =>
       `<tr>
         <td class="summary-fy" data-label="FY">${fyOf(s)}</td>
         <td data-label="Rows">${nf(s.row_count)}</td>
-        <td data-label="Peak">${nf(s.achieved_peak_mw)} MW</td>
+        <td data-label="Overall peak">${nf(s.achieved_peak_mw)} MW</td>
+        <td data-label="${classLabel} peak">${nf(s[finalPeakKey])} MW</td>
+        <td data-label="${classLabel} timing">${formatPeakIntervalCell(s[finalDateKey], s[finalPeriodKey], s.periods_per_day)}</td>
         <td data-label="Energy">${nf(s.achieved_energy_gwh)} GWh</td>
-        <td data-label="Peak YoY" class="growth">${fmtPct(s.peak_growth_percent, 2)}</td>
+        <td data-label="${classLabel} peak YoY" class="growth">${fmtPct(s[growthKey], 2)}</td>
         <td data-label="Energy YoY" class="growth">${fmtPct(s.energy_growth_percent, 2)}</td>
       </tr>`
     ).join('');
@@ -637,12 +898,20 @@ function populateResults(data) {
   requestAnimationFrame(updateSummaryScrollHint);
 }
 
+function setSummaryPeriod(period) {
+  if (!['solar','non_solar'].includes(period) || state.summaryPeriod === period) return;
+  state.summaryPeriod = period;
+  if (state.lastResults) populateResults(state.lastResults);
+}
+
 function updateSummaryScrollHint() {
-  const hint = document.querySelector('.summary-scroll-hint');
-  const scroller = document.querySelector('.summary-table-scroll');
-  if (!hint || !scroller) return;
-  hint.hidden = window.matchMedia('(max-width: 700px)').matches ||
-    scroller.scrollWidth <= scroller.clientWidth + 1;
+  document.querySelectorAll('.summary-table-section').forEach(section => {
+    const hint = section.querySelector('.summary-scroll-hint');
+    const scroller = section.querySelector('.summary-table-scroll');
+    if (!hint || !scroller) return;
+    hint.hidden = window.matchMedia('(max-width: 700px)').matches ||
+      scroller.scrollWidth <= scroller.clientWidth + 1;
+  });
 }
 
 function formatPeakInterval(isoDate, period, periodsPerDay) {
@@ -665,6 +934,7 @@ function copyOutputPath() {
 
 function newRun() {
   state.hasResults = false; state.step = 1; state.generating = false;
+  state.summaryPeriod = 'solar'; state.lastResults = null;
   hoverPos = null; viewMin = 0; viewMax = 1;
   document.getElementById('progress-area').hidden     = true;
   document.getElementById('generate-btn-area').hidden = false;
@@ -756,14 +1026,66 @@ function buildTopEnvelope(pts, pl, yOf) {
   return arr;
 }
 
-function xLabelFor(pos, yr, mode) {
-  const n = yr.base.length, p = yr.periodsPerDay;
-  const idx = Math.max(0, Math.min(n - 1, Math.round(pos * (n - 1))));
-  const day = Math.floor(idx / p), period = idx % p;
-  const d = new Date(yr.startDate + 'T00:00:00'); d.setDate(d.getDate() + day);
-  if (mode === 'hour') return intervalRange(period + 1, p).split('–')[0];
-  if (mode === 'day')  return `${String(d.getDate()).padStart(2,'0')} ${MONTHS[d.getMonth()]}`;
-  return MONTHS[d.getMonth()];
+function buildTimeGridTicks(yr, min = 0, max = 1) {
+  const n = yr?.base?.length || 0;
+  const periodsPerDay = Number(yr?.periodsPerDay);
+  if (n < 2 || !periodsPerDay || !yr?.startDate) return [];
+
+  const safeMin = Math.max(0, Math.min(1, Number(min)));
+  const safeMax = Math.max(safeMin, Math.min(1, Number(max)));
+  const firstIndex = Math.max(0, Math.floor(safeMin * (n - 1)));
+  const lastIndex = Math.min(n - 1, Math.ceil(safeMax * (n - 1)));
+  const firstDay = Math.max(0, Math.floor(firstIndex / periodsPerDay));
+  const lastDay = Math.min(Math.ceil(n / periodsPerDay) - 1, Math.floor(lastIndex / periodsPerDay));
+  const visibleDays = Math.max(1, (lastIndex - firstIndex + 1) / periodsPerDay);
+  const startDate = new Date(`${yr.startDate}T00:00:00`);
+  const ticks = [];
+
+  const dateForDay = dayOffset => {
+    const date = new Date(startDate);
+    date.setDate(date.getDate() + dayOffset);
+    return date;
+  };
+  const dayLabel = date => `${String(date.getDate()).padStart(2,'0')} ${MONTHS[date.getMonth()]}`;
+  const addTick = (dayOffset, periodOffset, kind, label = '') => {
+    const index = dayOffset * periodsPerDay + periodOffset;
+    if (index < 0 || index > n - 1) return;
+    const pos = index / (n - 1);
+    if (pos < safeMin - 1e-9 || pos > safeMax + 1e-9) return;
+    ticks.push({ pos, kind, label });
+  };
+
+  if (visibleDays <= 3) {
+    const quarterDay = periodsPerDay / 4;
+    for (let day = firstDay; day <= lastDay; day++) {
+      const date = dateForDay(day);
+      for (let quarter = 0; quarter < 4; quarter++) {
+        const periodOffset = quarter * quarterDay;
+        addTick(day, periodOffset, quarter === 0 ? (date.getDate() === 1 ? 'month' : 'day') : 'hour',
+          quarter === 0 ? dayLabel(date) : formatMinutes(periodOffset * 1440 / periodsPerDay));
+      }
+    }
+  } else if (visibleDays <= 31) {
+    const labelEvery = visibleDays <= 10 ? 1 : (visibleDays <= 20 ? 2 : 5);
+    for (let day = firstDay; day <= lastDay; day++) {
+      const date = dateForDay(day);
+      const monthBoundary = date.getDate() === 1;
+      const label = monthBoundary || (day - firstDay) % labelEvery === 0 ? dayLabel(date) : '';
+      addTick(day, 0, monthBoundary ? 'month' : 'day', label);
+    }
+  } else if (visibleDays <= 120) {
+    for (let day = firstDay; day <= lastDay; day++) {
+      const date = dateForDay(day);
+      if (date.getDate() === 1) addTick(day, 0, 'month', dayLabel(date));
+      else if (date.getDay() === 1) addTick(day, 0, 'week', dayLabel(date));
+    }
+  } else {
+    for (let day = firstDay; day <= lastDay; day++) {
+      const date = dateForDay(day);
+      if (date.getDate() === 1) addTick(day, 0, 'month', MONTHS[date.getMonth()]);
+    }
+  }
+  return ticks;
 }
 
 function drawChart() {
@@ -781,8 +1103,6 @@ function drawChart() {
   plot = pl;
 
   const sp = spanV();
-  const visibleDays = sp * DAYS_PER_YEAR;
-  const mode = visibleDays <= 3 ? 'hour' : (visibleDays <= 70 ? 'day' : 'month');
   let yMin = 0, yMax = 1;
   if (yr.rooftop) {
     yMin = 0; yMax = 0;
@@ -806,13 +1126,22 @@ function drawChart() {
     ctx.fillText(yr.rooftop ? nf(tickValue) : tickValue.toFixed(2), pl.left - 8, y);
   }
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  for (let i = 0; i <= 6; i++) {
-    const frac = i / 6, x = pl.left + pl.w * frac, pos = viewMin + sp * frac;
-    ctx.strokeStyle = 'rgba(90,110,140,0.10)';
+  const gridStyles = {
+    month: { stroke:'rgba(73,91,120,0.25)', width:1.4 },
+    week:  { stroke:'rgba(90,110,140,0.13)', width:1 },
+    day:   { stroke:'rgba(90,110,140,0.18)', width:1.1 },
+    hour:  { stroke:'rgba(90,110,140,0.08)', width:1 },
+  };
+  buildTimeGridTicks(yr, viewMin, viewMax).forEach(tick => {
+    const x = pl.left + ((tick.pos - viewMin) / sp) * pl.w;
+    const style = gridStyles[tick.kind];
+    ctx.strokeStyle = style.stroke; ctx.lineWidth = style.width;
     ctx.beginPath(); ctx.moveTo(x, pl.top); ctx.lineTo(x, pl.bottom); ctx.stroke();
-    ctx.fillStyle = 'rgba(90,106,134,0.85)';
-    ctx.fillText(xLabelFor(pos, yr, mode), x, pl.bottom + 8);
-  }
+    if (tick.label) {
+      ctx.fillStyle = tick.kind === 'month' ? 'rgba(66,83,110,0.94)' : 'rgba(90,106,134,0.85)';
+      ctx.fillText(tick.label, x, pl.bottom + 8);
+    }
+  });
 
   ctx.save();
   ctx.beginPath(); ctx.rect(pl.left, pl.top, pl.w, pl.h); ctx.clip();
@@ -963,6 +1292,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupFileTiles();
   setupRooftopControls();
   setupFinancialYearInputs();
+  setupSolarWindowControls();
   setupInfoPopovers();
   setupChartInteractions();
   window.addEventListener('resize', updateSummaryScrollHint);
@@ -976,6 +1306,11 @@ if (typeof module !== 'undefined' && module.exports) {
     formatPeakIntervalCell,
     populateResults,
     requiredFilesReady,
+    consumeSelectedFile,
+    formatMinutes,
+    parseTimeMinutes,
+    setSummaryPeriod,
     setupChart,
+    buildTimeGridTicks,
   };
 }

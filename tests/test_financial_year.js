@@ -115,3 +115,15 @@ test('bound field exposes an inline error for inconsistent labels', () => {
   assert.equal(input.customValidity, 'Financial year beginning 2025 must end in 26.');
   assert.equal(error.textContent, 'Financial year beginning 2025 must end in 26.');
 });
+
+test('explicit silent validation does not restart contextual validation', () => {
+  const input = fakeInput('2025-26');
+  const error = { textContent: '' };
+  let notifications = 0;
+  const binding = bindFinancialYearInput(input, error, () => { notifications += 1; });
+
+  const result = binding.validate(false);
+
+  assert.equal(result.valid, true);
+  assert.equal(notifications, 0);
+});

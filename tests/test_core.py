@@ -10,9 +10,12 @@ from profile_tool.core import (
     expand_rooftop_profile,
     fiscal_year_label,
     generate_profiles,
+    inspect_base_profile,
+    inspect_targets,
     interpolate_rooftop_capacity,
     load_rooftop_profile,
     load_rooftop_trajectory,
+    period_classification,
     summaries_as_dicts,
     validate_rooftop_trajectory_coverage,
 )
@@ -94,6 +97,7 @@ class GenerateProfilesFinancialYearTests(unittest.TestCase):
                     "month",
                     "day",
                     "period",
+                    "Period classification",
                     "projected demand",
                 ],
             )
@@ -116,6 +120,118 @@ class GenerateProfilesFinancialYearTests(unittest.TestCase):
                 expected_energy_gwh,
                 places=9,
             )
+
+    def test_default_solar_window_classifies_hourly_and_quarter_hour_periods(self) -> None:
+        expected = {
+            24: {6: "Non-solar", 7: "Solar", 18: "Solar", 19: "Non-solar"},
+            96: {24: "Non-solar", 25: "Solar", 72: "Solar", 73: "Non-solar"},
+        }
+        for periods_per_day, cases in expected.items():
+            for period, classification in cases.items():
+                with self.subTest(periods_per_day=periods_per_day, period=period):
+                    self.assertEqual(
+                        period_classification(period, periods_per_day, 360, 1080),
+                        classification,
+                    )
+
+    def test_normal_generation_exports_classification_and_split_peaks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            base_path, peak_path, energy_path = self._write_inputs(
+                root, base_day_count=365, periods_per_day=24
+            )
+            result = generate_profiles(
+                base_profile_path=base_path,
+                peak_projection_path=peak_path,
+                energy_projection_path=energy_path,
+                base_start_date=dt.date(2024, 4, 1),
+                base_end_date=dt.date(2025, 3, 31),
+                projection_start_year=2025,
+                projection_end_year=2025,
+                output_dir=root,
+            )
+            with result.output_path.open(newline="", encoding="utf-8") as handle:
+                rows = list(csv.DictReader(handle))
+            first_day = rows[:24]
+            self.assertEqual(first_day[5]["Period classification"], "Non-solar")
+            self.assertEqual(first_day[6]["Period classification"], "Solar")
+            self.assertEqual(first_day[17]["Period classification"], "Solar")
+            self.assertEqual(first_day[18]["Period classification"], "Non-solar")
+            summary = result.summaries[0]
+            self.assertEqual(summary.solar_peak_mw, 117.0)
+            self.assertEqual(summary.solar_peak_period, 18)
+            self.assertEqual(summary.non_solar_peak_mw, 123.0)
+            self.assertEqual(summary.non_solar_peak_period, 24)
+
+    def test_custom_solar_window_must_align_to_profile_resolution(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            base_path, peak_path, energy_path = self._write_inputs(
+                root, base_day_count=365, periods_per_day=24
+            )
+            with self.assertRaisesRegex(ProfileGenerationError, "align to 60-minute"):
+                generate_profiles(
+                    base_profile_path=base_path,
+                    peak_projection_path=peak_path,
+                    energy_projection_path=energy_path,
+                    base_start_date=dt.date(2024, 4, 1),
+                    base_end_date=dt.date(2025, 3, 31),
+                    projection_start_year=2025,
+                    projection_end_year=2025,
+                    output_dir=root,
+                    solar_start_minutes=375,
+                    solar_end_minutes=1080,
+                )
+
+    def test_custom_aligned_window_drives_csv_and_split_peak_timing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            base_path, peak_path, energy_path = self._write_inputs(
+                root, base_day_count=365, periods_per_day=24
+            )
+            result = generate_profiles(
+                base_profile_path=base_path,
+                peak_projection_path=peak_path,
+                energy_projection_path=energy_path,
+                base_start_date=dt.date(2024, 4, 1),
+                base_end_date=dt.date(2025, 3, 31),
+                projection_start_year=2025,
+                projection_end_year=2025,
+                output_dir=root,
+                solar_start_minutes=420,
+                solar_end_minutes=1140,
+            )
+            with result.output_path.open(newline="", encoding="utf-8") as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual(rows[6]["Period classification"], "Non-solar")
+            self.assertEqual(rows[7]["Period classification"], "Solar")
+            self.assertEqual(rows[18]["Period classification"], "Solar")
+            self.assertEqual(rows[19]["Period classification"], "Non-solar")
+            summary = result.summaries[0]
+            self.assertEqual(summary.solar_peak_period, 19)
+            self.assertEqual(summary.non_solar_peak_period, 24)
+
+    def test_upload_inspection_reports_resolution_and_rejects_duplicate_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            base_path, peak_path, _ = self._write_inputs(
+                root, base_day_count=365, periods_per_day=96
+            )
+            inspection = inspect_base_profile(base_path)
+            self.assertEqual(inspection.periods_per_day, 96)
+            self.assertEqual(inspection.day_count, 365)
+            with peak_path.open("a", newline="", encoding="utf-8") as handle:
+                csv.writer(handle).writerow(["2025-08-01", 200])
+            with self.assertRaisesRegex(ProfileGenerationError, "duplicate target year"):
+                inspect_targets(peak_path)
+
+    def test_upload_inspection_reports_partial_calendar_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "partial.csv"
+            path.write_text("Month,Day,Value\n4,1,1.0\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ProfileGenerationError, "missing: Period"):
+                inspect_base_profile(path)
 
     def test_generation_rejects_calendar_year_base_period(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -309,6 +425,84 @@ class GenerateProfilesFinancialYearTests(unittest.TestCase):
                 summary_payload["unadjusted_peak_period"],
                 summary.unadjusted_peak_period,
             )
+            self.assertIsNotNone(summary.before_rooftop_solar_peak_mw)
+            self.assertIsNotNone(summary.before_rooftop_non_solar_peak_mw)
+            self.assertAlmostEqual(
+                summary.solar_peak_reduction_mw,
+                summary.before_rooftop_solar_peak_mw - summary.solar_peak_mw,
+            )
+            self.assertAlmostEqual(
+                summary.non_solar_peak_reduction_mw,
+                summary.before_rooftop_non_solar_peak_mw
+                - summary.non_solar_peak_mw,
+            )
+            for classification, prefix in (("Solar", "solar"), ("Non-solar", "non_solar")):
+                classified_rows = [
+                    row for row in rows if row["Period classification"] == classification
+                ]
+                for value_column, field_prefix in (
+                    ("demand before rooftop", f"before_rooftop_{prefix}"),
+                    ("projected demand", prefix),
+                ):
+                    peak_row = max(
+                        classified_rows, key=lambda row: float(row[value_column])
+                    )
+                    self.assertAlmostEqual(
+                        getattr(summary, f"{field_prefix}_peak_mw"),
+                        float(peak_row[value_column]),
+                        places=3,
+                    )
+                    self.assertEqual(
+                        getattr(summary, f"{field_prefix}_peak_date"),
+                        f"{int(peak_row['year']):04d}-{int(peak_row['month']):02d}-{int(peak_row['day']):02d}",
+                    )
+                    self.assertEqual(
+                        getattr(summary, f"{field_prefix}_peak_period"),
+                        int(peak_row["period"]),
+                    )
+
+    def test_rooftop_class_peak_timing_uses_csv_precision_for_ties(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            base_path = root / "base.csv"
+            day_values = [
+                199.9996 if period == 7 else 200.0 if period == 8 else 100.0
+                for period in range(1, 25)
+            ]
+            with base_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(["demand"])
+                for _ in range(365):
+                    writer.writerows([[value] for value in day_values])
+            peak_path = root / "peak.csv"
+            energy_path = root / "energy.csv"
+            with peak_path.open("w", newline="", encoding="utf-8") as handle:
+                csv.writer(handle).writerows(
+                    [["DateTime", "target"], ["2025-04-01", 200.0]]
+                )
+            with energy_path.open("w", newline="", encoding="utf-8") as handle:
+                csv.writer(handle).writerows(
+                    [
+                        ["DateTime", "target"],
+                        ["2025-04-01", sum(day_values) * 365 / 1000],
+                    ]
+                )
+            result = generate_profiles(
+                base_profile_path=base_path,
+                peak_projection_path=peak_path,
+                energy_projection_path=energy_path,
+                base_start_date=dt.date(2024, 4, 1),
+                base_end_date=dt.date(2025, 3, 31),
+                projection_start_year=2025,
+                projection_end_year=2025,
+                output_dir=root,
+                rooftop_profile_path=self._write_rooftop_profile(root, "daily"),
+                rooftop_trajectory_path=self._write_rooftop_trajectory(root),
+                rooftop_profile_mode="daily",
+            )
+            summary = result.summaries[0]
+            self.assertEqual(summary.before_rooftop_solar_peak_period, 7)
+            self.assertEqual(summary.solar_peak_period, 7)
 
     def test_rooftop_resolution_must_match_demand(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

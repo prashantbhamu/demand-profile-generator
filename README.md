@@ -9,7 +9,8 @@ The tool:
 1. reads a historical demand profile;
 2. maps it to each future financial year while preserving weekday behaviour;
 3. scales each projection year to its peak-demand and energy targets; and
-4. writes the projected interval-level demand to CSV.
+4. classifies every interval into a configurable solar/non-solar planning period; and
+5. writes the projected interval-level demand to CSV.
 
 Profiles with 24 or 96 periods per day are supported.
 
@@ -46,6 +47,15 @@ The interface accepts:
 - the base financial year, running from 1 April through 31 March;
 - the first and last projection financial years; and
 - an output folder.
+
+The solar period defaults to 06:00–18:00 and can be changed in the interface.
+Its boundaries must align with the detected hourly or 15-minute profile
+resolution. The classification is derived by the tool and requires no input
+column.
+
+Base, peak, and energy uploads are validated when selected. Structural errors
+are shown in the upload step; compatibility with the configured base and
+projection financial years is checked in the configuration step.
 
 When **Rooftop Solar Adjustment** is enabled, the interface also accepts:
 
@@ -87,12 +97,16 @@ A sequential file containing one usable numeric profile column is also supported
 The generated CSV contains:
 
 ```text
-Financial Year,year,month,day,period,projected demand
+Financial Year,year,month,day,period,Period classification,projected demand
 ```
 
 `Financial Year` identifies the projection block using `YYYY-YY`. Projected demand
 is written as whole MW. If the intended filename already exists, a timestamp is
 added instead of overwriting it.
+
+`Period classification` is `Solar` when the interval starts inside the configured
+solar window and `Non-solar` otherwise. The start boundary is inclusive and the
+end boundary is exclusive.
 
 Rooftop-adjusted runs write `<profile_name>_rooftop_adjusted.csv` with the
 before-rooftop demand, incremental rooftop capacity, incremental rooftop
@@ -101,12 +115,25 @@ demand is retained as net export.
 
 ## Results And Chart
 
-The interface reports annual row count, achieved peak, achieved energy, and year-on-year peak and energy growth. It also compares the calendar-mapped base profile with the projected profile using peak-normalized chart series, with year selection, hover details, zoom, pan, reset, and fullscreen controls.
+The interface reports annual row count, achieved peak, achieved energy, and
+year-on-year peak and energy growth. It also compares the calendar-mapped base
+profile with the projected profile using peak-normalized chart series, with year
+selection, hover details, zoom, pan, reset, and fullscreen controls. Vertical
+guides follow calendar month, week, day, and six-hour boundaries as the view is
+zoomed or panned.
+
+A sun/crescent-moon control switches the summary between solar-period and non-solar-
+period peak magnitude, timing, and growth while retaining the overall annual
+peak.
 
 Rooftop-mode results compare unadjusted and adjusted peak, peak timing, and
-energy; rooftop generation; minimum demand; and projected CUF. Its chart uses an
+energy; cumulative FY-end rooftop capacity; rooftop generation; minimum demand;
+and projected CUF. Its chart uses an
 absolute-MW axis with unadjusted-demand, adjusted-demand, and rooftop-generation
 series.
+
+For rooftop runs, the solar/non-solar summary reports before- and after-rooftop
+peaks and timings plus the reduction in each period class.
 
 ## Source Structure
 

@@ -15,6 +15,7 @@ const {
   formatPeakIntervalCell,
   populateResults,
   requiredFilesReady,
+  consumeSelectedFile,
   formatMinutes,
   parseTimeMinutes,
   setSummaryPeriod,
@@ -51,6 +52,15 @@ const validCore = Object.fromEntries(['base','peak','energy'].map(key => [key,{s
 const invalidCore = { ...validCore, peak:{status:'error'} };
 assert.equal(requiredFilesReady(standardFiles, false, 'empty', 'empty', validCore), true);
 assert.equal(requiredFilesReady(standardFiles, false, 'empty', 'empty', invalidCore), false);
+
+const replacementFile = { name:'edited-input.xlsx' };
+const replacementInput = { files:[replacementFile], value:'C:\\fakepath\\edited-input.xlsx' };
+assert.equal(consumeSelectedFile(replacementInput), replacementFile);
+assert.equal(replacementInput.value, '');
+replacementInput.files = [replacementFile];
+replacementInput.value = 'C:\\fakepath\\edited-input.xlsx';
+assert.equal(consumeSelectedFile(replacementInput), replacementFile);
+assert.equal(replacementInput.value, '');
 
 const elements = new Map([
   ['output-path-text', {}], ['metrics-grid', {}], ['summary-head', {}],

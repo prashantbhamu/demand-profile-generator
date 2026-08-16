@@ -392,14 +392,19 @@ function acceptFile(key, file) {
   render();
 }
 
+function consumeSelectedFile(input) {
+  const file = input.files && input.files[0] ? input.files[0] : null;
+  if (file) input.value = '';
+  return file;
+}
+
 function setupFileTiles() {
   ['base', 'peak', 'energy', 'rooftopTrajectory', 'rooftopProfile'].forEach(key => {
     const tile  = document.getElementById(`tile-${key}`);
     const input = document.getElementById(`input-${key}`);
     input.addEventListener('change', () => {
-      if (input.files && input.files[0]) {
-        acceptFile(key, input.files[0]);
-      }
+      const file = consumeSelectedFile(input);
+      if (file) acceptFile(key, file);
     });
     tile.addEventListener('dragover',  e => { e.preventDefault(); tile.dataset.dragging = 'true'; });
     tile.addEventListener('dragleave', e => { e.preventDefault(); tile.dataset.dragging = 'false'; });
@@ -1301,6 +1306,7 @@ if (typeof module !== 'undefined' && module.exports) {
     formatPeakIntervalCell,
     populateResults,
     requiredFilesReady,
+    consumeSelectedFile,
     formatMinutes,
     parseTimeMinutes,
     setSummaryPeriod,
